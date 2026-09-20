@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { PromptBar } from '../components/PromptBar';
 import { AspectPicker } from '../components/AspectPicker';
 import { ImagePreview } from '../components/ImagePreview';
@@ -67,8 +67,46 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
   onReuseJob
 }) => {
   const [showFineTune, setShowFineTune] = useState(false);
+  const [leftWidthPercent, setLeftWidthPercent] = useState<number>(() => {
+    const saved = localStorage.getItem('studio_split_percent');
+    return saved ? parseFloat(saved) : 48; // default 48% left, 52% right
+  });
+  const [isDraggingSplit, setIsDraggingSplit] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const isGenerating = currentJob?.state === 'generating' || currentJob?.state === 'loading_model' || currentJob?.state === 'preparing';
+
+  const handleMouseDownSplitter = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingSplit(true);
+  };
+
+  useEffect(() => {
+    if (!isDraggingSplit) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const offsetX = e.clientX - rect.left;
+      let newPercent = (offsetX / rect.width) * 100;
+      // Clamp between 25% and 75%
+      if (newPercent < 25) newPercent = 25;
+      if (newPercent > 75) newPercent = 75;
+      setLeftWidthPercent(newPercent);
+      localStorage.setItem('studio_split_percent', newPercent.toFixed(1));
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingSplit(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingSplit]);
 
   const handleVary = (job: GenerationJob) => {
     setPrompt(job.prompt);
@@ -82,9 +120,26 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(420px, 1.2fr) minmax(400px, 1fr)', gap: '1.5rem', alignItems: 'start' }}>
+    <div
+      ref={containerRef}
+      style={{
+        display: 'flex',
+        gap: 0,
+        position: 'relative',
+        alignItems: 'stretch',
+        minHeight: 'calc(100vh - 120px)',
+        userSelect: isDraggingSplit ? 'none' : 'auto'
+      }}
+    >
       {/* Left Column: Prompt & Controls */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <div style={{
+        width: `${leftWidthPercent}%`,
+        minWidth: 340,
+        paddingRight: '1rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1.25rem'
+      }}>
         <PromptBar
           prompt={prompt}
           setPrompt={setPrompt}
@@ -215,8 +270,43 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
         </div>
       </div>
 
+      {/* Draggable Horizontal Splitter */}
+      <div
+        onMouseDown={handleMouseDownSplitter}
+        onDoubleClick={() => {
+          setLeftWidthPercent(48);
+          localStorage.setItem('studio_split_percent', '48');
+        }}
+        title="Drag left/right to resize image output window (double-click to reset 50/50)"
+        style={{
+          width: 14,
+          margin: '0 -7px',
+          cursor: 'col-resize',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 20,
+          userSelect: 'none'
+        }}
+      >
+        <div style={{
+          width: 3,
+          height: '80px',
+          borderRadius: 3,
+          background: isDraggingSplit ? 'var(--primary)' : 'var(--border-subtle)',
+          boxShadow: isDraggingSplit ? '0 0 12px var(--primary-glow)' : 'none',
+          transition: 'background 0.2s, box-shadow 0.2s'
+        }} />
+      </div>
+
       {/* Right Column: Image Preview & Generation Telemetry */}
-      <div>
+      <div style={{
+        flex: 1,
+        minWidth: 360,
+        paddingLeft: '1rem',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
         <ImagePreview
           currentJob={currentJob}
           lastCompletedJob={lastCompletedJob}

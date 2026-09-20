@@ -18,7 +18,7 @@ class VRAMManager:
     """
     def __init__(self, target_vram_gb: float = 16.0):
         self.target_vram_gb = target_vram_gb
-        self.current_strategy: VRAMStrategy = VRAMStrategy.BALANCED
+        self.current_strategy: VRAMStrategy = VRAMStrategy.FULL_GPU
         self.loaded_models: Dict[str, Any] = {} # model_id -> adapter
         self.peak_vram_mb: float = 0.0
 

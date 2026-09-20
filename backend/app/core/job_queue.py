@@ -44,7 +44,7 @@ class JobMetrics(BaseModel):
     peak_vram_mb: float = 0.0
     images_per_minute: float = 0.0
     oom_retries: int = 0
-    effective_vram_strategy: str = "BALANCED"
+    effective_vram_strategy: str = "FULL_GPU"
 
 class GenerationJob(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -54,20 +54,20 @@ class GenerationJob(BaseModel):
     negative_prompt: str = ""
     enhanced_prompt: Optional[str] = ""
     final_prompt: Optional[str] = ""
-    model: str = "auto"
+    model: str = "zimage-turbo"
     mode: str = "auto"
     style: str = "none"
     aspect_ratio: str = "1:1"
     quality: str = "balanced"
     width: int = 1024
     height: int = 1024
-    steps: int = 20
-    guidance: float = 7.0
+    steps: int = 8
+    guidance: float = 1.5
     seed: int = -1
     sampler: str = "Default (Recommended)"
     scheduler: str = "Default"
     loras: List[Dict[str, Any]] = Field(default_factory=list)
-    vram_strategy: str = "BALANCED"
+    vram_strategy: str = "FULL_GPU"
     precision: str = "fp16"
 
     # Editing specifics

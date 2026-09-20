@@ -126,24 +126,68 @@ async def upscale_image_endpoint(req: UpscaleRequest):
     import time
     from PIL import Image
     from backend.app.core.config import PROJECT_ROOT
-    from backend.app.core.database import insert_generation
+    from urllib.parse import urlparse
+    from backend.app.core.database import insert_generation, get_generation_by_id
+    from backend.app.core.job_queue import job_queue
     from backend.app.gallery.metadata_manager import create_png_info, extract_metadata_from_png
     from backend.app.editing.upscaler import upscaler_engine
 
     target_path = None
+
+    # 1. Direct image_path provided
     if req.image_path:
-        target_path = Path(req.image_path)
-    elif req.image_url:
-        clean_url = req.image_url.split("?")[0]
-        if clean_url.startswith("/outputs/"):
-            target_path = PROJECT_ROOT / clean_url.lstrip("/")
-        elif clean_url.startswith("http"):
-            parts = clean_url.split("/outputs/")
-            if len(parts) > 1:
-                target_path = PROJECT_ROOT / "outputs" / parts[1]
+        p = Path(req.image_path)
+        if p.exists() and p.is_file():
+            target_path = p
+        elif (PROJECT_ROOT / req.image_path).exists():
+            target_path = PROJECT_ROOT / req.image_path
+
+    # 2. Extract from image_url
+    if not target_path and req.image_url:
+        parsed = urlparse(req.image_url)
+        path_str = parsed.path if parsed.path else req.image_url.split("?")[0].strip()
+
+        # Check if URL refers to gallery API: /api/gallery/image/{generation_id}
+        if "/api/gallery/image/" in path_str:
+            gen_id = path_str.split("/api/gallery/image/")[-1].strip().strip("/")
+            record = await get_generation_by_id(gen_id)
+            if record and record.get("image_path"):
+                rec_p = Path(record["image_path"])
+                if rec_p.exists() and rec_p.is_file():
+                    target_path = rec_p
+            if not target_path:
+                job = job_queue.get_job(gen_id)
+                if job and job.output_image_path and Path(job.output_image_path).exists():
+                    target_path = Path(job.output_image_path)
+
+        # Check /outputs/ path
+        elif "/outputs/" in path_str or path_str.startswith("outputs/"):
+            rel_part = path_str.split("outputs/")[-1].lstrip("/\\")
+            cand = PROJECT_ROOT / "outputs" / rel_part
+            if cand.exists() and cand.is_file():
+                target_path = cand
+
+        # Check if path_str is an ID directly
+        if not target_path:
+            clean_id = path_str.strip("/\\")
+            record = await get_generation_by_id(clean_id)
+            if record and record.get("image_path") and Path(record["image_path"]).exists():
+                target_path = Path(record["image_path"])
+
+        # Fallback: scan outputs directory for matching filename
+        if not target_path:
+            clean_name = Path(path_str).name
+            if clean_name:
+                for cand in (PROJECT_ROOT / "outputs").glob(f"**/{clean_name}"):
+                    if cand.is_file():
+                        target_path = cand
+                        break
 
     if not target_path or not target_path.exists():
-        raise HTTPException(status_code=404, detail="Source image file not found.")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Source image file not found for url='{req.image_url}' or path='{req.image_path}'."
+        )
 
     try:
         source_img = Image.open(target_path)

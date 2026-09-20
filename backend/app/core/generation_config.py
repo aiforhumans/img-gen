@@ -28,7 +28,7 @@ class GenerationConfig(BaseModel):
     sampler: str = Field(default="Default (Recommended)", description="Denoising sampler algorithm")
     scheduler: str = Field(default="Default", description="Step scheduler algorithm")
     loras: List[LoRAConfig] = Field(default_factory=list, description="List of attached LoRA adapters")
-    vram_strategy: str = Field(default="BALANCED", description="RTX 5080 VRAM Strategy")
+    vram_strategy: str = Field(default="FULL_GPU", description="RTX 5080 VRAM Strategy")
     precision: str = Field(default="fp16", description="Execution precision (fp16 or bf16)")
 
     # Optional image editing fields
