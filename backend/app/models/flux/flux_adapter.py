@@ -176,9 +176,15 @@ class FluxAdapter(BaseImageModelAdapter):
             app_logger.info(f"[FluxAdapter] Executing REAL PyTorch FLUX inference ({actual_steps} steps, {width}x{height}, guidance={actual_guidance}, seed={actual_seed})")
             generator = torch.Generator(device="cuda" if torch.cuda.is_available() else "cpu").manual_seed(actual_seed)
 
+            from backend.app.models.latent_preview import decode_latents_to_preview_pil
+
             def step_end_callback(pipe_self, step_idx, timestep, callback_kwargs):
                 if callback:
-                    callback(step_idx + 1, actual_steps, None)
+                    preview_img = None
+                    latents = callback_kwargs.get("latents") if callback_kwargs else None
+                    if latents is not None:
+                        preview_img = decode_latents_to_preview_pil(latents, target_width=width, target_height=height)
+                    callback(step_idx + 1, actual_steps, preview_img)
                 return callback_kwargs
 
             output = self.pipeline(
@@ -188,7 +194,8 @@ class FluxAdapter(BaseImageModelAdapter):
                 num_inference_steps=actual_steps,
                 guidance_scale=actual_guidance,
                 generator=generator,
-                callback_on_step_end=step_end_callback if callback else None
+                callback_on_step_end=step_end_callback if callback else None,
+                callback_on_step_end_tensor_inputs=["latents"] if callback else None
             )
             return output.images[0]
 
@@ -209,7 +216,7 @@ class FluxAdapter(BaseImageModelAdapter):
             draw.line([(0, y), (width, y)], fill=(r, g, b))
 
         for step in range(1, steps + 1):
-            time.sleep(0.01)
+            time.sleep(0.02)
             cx = rng.randint(int(width * 0.2), int(width * 0.8))
             cy = rng.randint(int(height * 0.2), int(height * 0.8))
             rad = rng.randint(30, max(50, int(min(width, height) * 0.35)))
@@ -220,7 +227,7 @@ class FluxAdapter(BaseImageModelAdapter):
             )
             draw.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], fill=shape_color)
 
-            if callback and (step % 2 == 0 or step == steps):
+            if callback:
                 preview = img.copy().resize((min(width, 384), min(height, 384)), Image.Resampling.BILINEAR)
                 callback(step, steps, preview)
 

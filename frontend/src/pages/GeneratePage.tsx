@@ -33,6 +33,8 @@ interface GeneratePageProps {
   setGuidance: (g: number) => void;
   seed: number;
   setSeed: (s: number) => void;
+  sampler: string;
+  setSampler: (s: string) => void;
   vramStrategy: VRAMStrategy;
   setVRAMStrategy: (s: VRAMStrategy) => void;
   onReuseJob?: (job: GenerationJob) => void;
@@ -40,6 +42,16 @@ interface GeneratePageProps {
   setReference1: (ref: ReferenceImageState | null) => void;
   reference2: ReferenceImageState | null;
   setReference2: (ref: ReferenceImageState | null) => void;
+}
+
+function getStepAwareSamplers(steps: number): string[] {
+  if (steps <= 2) {
+    return ['Euler'];
+  } else if (steps <= 4) {
+    return ['Euler', 'DPM++ 2M Karras'];
+  } else {
+    return ['Euler', 'DPM++ 2M Karras', 'Euler Ancestral', 'DDIM'];
+  }
 }
 
 export const GeneratePage: React.FC<GeneratePageProps> = ({
@@ -67,6 +79,8 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
   setGuidance,
   seed,
   setSeed,
+  sampler,
+  setSampler,
   vramStrategy,
   setVRAMStrategy,
   onReuseJob,
@@ -76,6 +90,13 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
   setReference2
 }) => {
   const [showFineTune, setShowFineTune] = useState(false);
+  const availableSamplers = getStepAwareSamplers(steps);
+
+  useEffect(() => {
+    if (!availableSamplers.includes(sampler)) {
+      setSampler('Euler');
+    }
+  }, [availableSamplers, sampler, setSampler]);
   const [leftWidthPercent, setLeftWidthPercent] = useState<number>(() => {
     const saved = localStorage.getItem('studio_split_percent');
     return saved ? parseFloat(saved) : 48; // default 48% left, 52% right
@@ -255,6 +276,31 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
                 />
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
                   Optimal for Juggernaut-XL Lightning: 1.5 - 2.0
+                </div>
+              </div>
+
+              {/* Step-Aware Sampler Selector */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                    Noise Scheduler / Sampler ({steps}-step):
+                  </label>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 700 }}>
+                    {sampler}
+                  </span>
+                </div>
+                <div className="pill-group" style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(availableSamplers.length, 2)}, 1fr)`, gap: 4 }}>
+                  {availableSamplers.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className={`pill-btn ${sampler === s ? 'active' : ''}`}
+                      onClick={() => setSampler(s)}
+                      style={{ fontSize: '0.75rem', padding: '0.35rem' }}
+                    >
+                      {s}
+                    </button>
+                  ))}
                 </div>
               </div>
 

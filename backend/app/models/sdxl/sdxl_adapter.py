@@ -197,9 +197,15 @@ class SDXLAdapter(BaseImageModelAdapter):
             app_logger.info(f"[SDXLAdapter] Executing REAL PyTorch inference ({steps} steps, {width}x{height}, seed={actual_seed})")
             generator = torch.Generator(device="cuda" if torch.cuda.is_available() else "cpu").manual_seed(actual_seed)
 
+            from backend.app.models.latent_preview import decode_latents_to_preview_pil
+
             def step_end_callback(pipe_self, step_idx, timestep, callback_kwargs):
                 if callback:
-                    callback(step_idx + 1, steps, None)
+                    preview_img = None
+                    latents = callback_kwargs.get("latents") if callback_kwargs else None
+                    if latents is not None:
+                        preview_img = decode_latents_to_preview_pil(latents, target_width=width, target_height=height)
+                    callback(step_idx + 1, steps, preview_img)
                 return callback_kwargs
 
             output = self.pipeline(
@@ -210,7 +216,8 @@ class SDXLAdapter(BaseImageModelAdapter):
                 num_inference_steps=steps,
                 guidance_scale=guidance,
                 generator=generator,
-                callback_on_step_end=step_end_callback if callback else None
+                callback_on_step_end=step_end_callback if callback else None,
+                callback_on_step_end_tensor_inputs=["latents"] if callback else None
             )
             return output.images[0]
 
@@ -231,7 +238,7 @@ class SDXLAdapter(BaseImageModelAdapter):
             draw.line([(0, y), (width, y)], fill=(r, g, b))
 
         for step in range(1, steps + 1):
-            time.sleep(0.01)
+            time.sleep(0.02)
             x1 = rng.randint(0, width // 2)
             y1 = rng.randint(0, height // 2)
             x2 = rng.randint(x1 + 50, width)
@@ -239,7 +246,7 @@ class SDXLAdapter(BaseImageModelAdapter):
             fill_col = (rng.randint(60, 220), rng.randint(70, 210), rng.randint(80, 240))
             draw.ellipse([x1, y1, x2, y2], outline=fill_col, width=3)
 
-            if callback and (step % 2 == 0 or step == steps):
+            if callback:
                 preview = img.copy().resize((min(width, 384), min(height, 384)), Image.Resampling.BILINEAR)
                 callback(step, steps, preview)
 

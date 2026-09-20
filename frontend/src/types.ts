@@ -180,3 +180,30 @@ export interface LoRAInfo {
   is_favorite: boolean;
   is_active?: boolean;
 }
+
+export type UpscaleEngineType = 'realesrgan_photo' | 'realesrgan_anime' | 'classic_lanczos';
+
+export interface UpscaleParams {
+  image_url?: string;
+  image_path?: string;
+  scale: number;
+  engine?: UpscaleEngineType;
+  enable_face_restore?: boolean;
+  face_fidelity?: number;
+  enable_diffusion_refine?: boolean;
+  diffusion_denoise?: number;
+  prompt?: string;
+}
+
+export interface UpscaleResult {
+  success: boolean;
+  output_url: string;
+  output_path: string;
+  width: number;
+  height: number;
+  scale: number;
+  engine?: UpscaleEngineType;
+  face_restore?: boolean;
+  diffusion_refine?: boolean;
+}
+

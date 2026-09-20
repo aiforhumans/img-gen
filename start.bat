@@ -27,7 +27,7 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r /c:":%PORT% *LISTENING"') 
 start /b cmd /c "ping 127.0.0.1 -n 3 >nul & start http://%HOST%:%PORT%"
 
 :: Launch FastAPI application with vivid colorized output and clean real-time streaming (no access spam)
-.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host %HOST% --port %PORT% --log-level info --no-access-log --use-colors
+.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host %HOST% --port %PORT% --log-level info --no-access-log --use-colors --reload
 
 if %ERRORLEVEL% neq 0 (
     echo.

@@ -152,7 +152,7 @@ export const ReferenceImagePanel: React.FC<ReferenceImagePanelProps> = ({
   };
 
   // Download IP-Adapter weights
-  const handleDownloadWeights = useCallback(async (mode: string) => {
+  const _handleDownloadWeights = useCallback(async (mode: string) => {
     setIsDownloading(true);
     try {
       await api.downloadIPAdapterWeights(mode);

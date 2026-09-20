@@ -22,7 +22,8 @@ $$\text{React 19 UI} \xrightarrow{\text{JSON API}} \text{FastAPI} \xrightarrow{\
 - **`backend/app/models/scheduler_factory.py`**: Architecture- and step-aware noise scheduler creator with automatic soft fallbacks.
 - **`backend/app/models/ip_adapter_manager.py`**: Central manager for IP-Adapter weights, CLIP image encoder, and dual-reference conditioning.
 - **`backend/app/gallery/metadata.py`**: Lossless metadata embedding using PNG standard `tEXt` and `zTXt` chunks.
-- **`frontend/`**: Vite + React 19 + TypeScript studio with dark-mode glassmorphic UI, real-time telemetry polling, inpainting canvas, and settings reuse.
+- **`backend/app/editing/`**: Multi-stage AI Super-Resolution (Real-ESRGAN Photo/Anime), CodeFormer Face Restoration, and generative texture refinement.
+- **`frontend/`**: Vite + React 19 + TypeScript studio with dark-mode glassmorphic UI, real-time telemetry polling, step-aware samplers, dual-mode IP-Adapter reference images, AI super-resolution modal, and lossless settings reuse.
 
 ---
 
@@ -78,6 +79,14 @@ When implementing features or refactoring, you must preserve these core rules:
 - **Clean Toggle-Off Lifecycle**: Whenever `has_reference` is False, the adapter MUST invoke `ip_adapter_manager.unload_adapter(pipeline)` and ensure `unet.config.encoder_hid_dim_type` is reset to `None` so standard text-to-image inference does not expect `image_embeds`.
 - **Lossless Persistence**: Always store reference configuration in embedded PNG chunk metadata and SQLite records so settings can be fully restored via "Reuse Settings".
 
+### 8. Real-Time Latent Step Previews & Viewport Sizing
+- **Full Resolution Decoded Latents**: `decode_latents_to_preview_pil` maps diffusion latents to RGB via linear projection and resizes to target image dimensions (`target_width`, `target_height`) or defaults to $8\times$ latent stride upscale so step previews never appear as raw, undersized latent tiles.
+- **Frontend Viewport Fit**: `ImagePreview` enforces `width: 100%`, `height: 100%`, `max-width: 100%`, `max-height: 100%`, and `object-fit: contain` on the active image element so that during generation, step previews fill the viewport area matching the exact bounding box and aspect ratio of completed output without jarring jumps.
+
+### 9. Styling Architecture (Vanilla CSS & Design Tokens)
+- **Zero Tailwind Dependency**: The frontend strictly uses Vanilla CSS, CSS custom properties (`:root` tokens in `index.css`), and predefined UI classes (`glass-panel`, `btn`, `pill-group`, `badge`).
+- **Never inject Tailwind utility classes** (`fixed inset-0`, `bg-zinc-950`, `flex`, `p-4`, etc.) into new or modified components. All modals and overlays must specify explicit CSS rules (`position: fixed`, `inset: 0`, `z-index`, `backdrop-filter`).
+
 ---
 
 ## 🛠️ Development Commands
@@ -103,7 +112,7 @@ npm --prefix frontend run dev
 
 ### Running Tests
 ```bash
-# Run the complete test suite (28/28 tests)
+# Run the complete test suite (35/35 tests)
 .venv\Scripts\python.exe -m pytest -v
 
 # Run a specific test file
@@ -118,7 +127,7 @@ npm --prefix frontend run dev
 # TypeScript typecheck and production build
 npm --prefix frontend run build
 
-# ESLint check
+# ESLint / Oxlint check (0 errors, 0 warnings)
 npm --prefix frontend run lint
 ```
 
@@ -131,7 +140,7 @@ f:\img-gen\
 ├── backend/
 │   ├── app/
 │   │   ├── api/
-│   │   │   ├── routes_generate.py       # Job submission, status, cancellation
+│   │   │   ├── routes_generate.py       # Job submission, status, cancellation, upscale, polish
 │   │   │   ├── routes_models.py         # Model list, loading, and step-aware samplers
 │   │   │   ├── routes_reference.py      # Reference uploads, IP-Adapter status & downloads
 │   │   │   ├── routes_gallery.py        # Gallery retrieval, filtering, deletion
@@ -149,21 +158,30 @@ f:\img-gen\
 │   │   │   ├── base_adapter.py          # Base pipeline interface & simulation mocks
 │   │   │   ├── scheduler_factory.py     # Step-aware scheduler instantiator
 │   │   │   ├── ip_adapter_manager.py    # IP-Adapter weights, CLIP ViT-H encoder
+│   │   │   ├── latent_preview.py        # Real-time latent step preview decoder
 │   │   │   └── zimage/                  # Z-Image Turbo adapter (SDXL-Lightning)
 │   │   ├── gallery/                     # PNG metadata reading and writing
-│   │   └── editing/                     # Inpainting, outpainting, 2x/4K upscaling
+│   │   └── editing/
+│   │       ├── upscaler.py              # Unified Super-Resolution coordinator
+│   │       ├── ai_upscaler.py           # Real-ESRGAN RRDBNet neural engine (2x/4x)
+│   │       └── face_restorer.py         # CodeFormer neural face enhancement
+│   ├── requirements.txt                 # Core backend dependencies
+│   └── requirements-torch-cu130.txt     # PyTorch 2.14+cu130 deterministic wheel
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
+│   │   │   ├── Header.tsx               # Studio header & real-time VRAM telemetry
 │   │   │   ├── PromptBar.tsx            # Main prompt input, Magic Polish, Generate button
-│   │   │   ├── ReferenceImagePanel.tsx  # Dual-mode reference image uploader & sliders
-│   │   │   ├── AdvancedSettingsDrawer.tsx # Step-aware sampler selector, steps, CFG, seeds
+│   │   │   ├── AspectPicker.tsx         # Responsive aspect ratio & resolution selector
+│   │   │   ├── ReferenceImagePanel.tsx  # Dual-mode IP-Adapter reference uploader & sliders
 │   │   │   ├── ImagePreview.tsx         # Real-time preview, generation progress, metadata
-│   │   │   └── InpaintCanvas.tsx        # HTML5 mask painting & outpaint expansion
-│   │   ├── pages/                       # GeneratePage, GalleryPage, ModelsPage, etc.
+│   │   │   └── SuperResolutionModal.tsx # AI Super-Resolution modal (Real-ESRGAN, Face Restore)
+│   │   ├── pages/
+│   │   │   ├── GeneratePage.tsx         # Primary generation studio with fine-tune controls
+│   │   │   └── GalleryPage.tsx          # SQLite generation gallery with reuse settings
 │   │   ├── services/api.ts              # Strongly typed REST client
 │   │   └── types.ts                     # TypeScript interfaces matching backend models
-├── tests/                               # Comprehensive test suite (28 tests)
+├── tests/                               # Comprehensive test suite (35 tests)
 ├── config/                              # Default settings & style preset JSONs
 └── scripts/                             # Diagnostics & preflight check utilities
 ```

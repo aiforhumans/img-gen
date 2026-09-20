@@ -37,10 +37,10 @@ Combining the simplicity of modern web studios with industrial-grade reliability
   Active LoRA management with live strength adjustment, cross-architecture compatibility checking, and guaranteed unloading to prevent weight leakage between jobs.
 - **✨ "Magic Polish" Prompt Intelligence & Style Presets**:
   Compose curated styles without modifying the user's `original_prompt`, plus optional local LM Studio integration (`http://127.0.0.1:1234/v1`) using Gemma/DeepSeek.
-- **🎨 Interactive Inpainting & Outpainting Canvas**:
-  Full HTML5 canvas with zoom, pan, brush control, mask inversion, and directional expansion with real image/mask backend dispatch.
-- **🔍 2x & 4K Real-Time Upscaler**:
-  Built-in Lanczos + unsharp contrast enhancement upscaling images up to 4K resolution in ~1.2s.
+- **👁️ Real-Time Latent Step Previews**:
+  Sub-millisecond RGB preview decoding on every diffusion step via linear projection and bilinear canvas scaling, seamlessly filling the output window matching the final render.
+- **🔬 Multi-Stage AI Super-Resolution & Face Detailer Engine**:
+  Neural 2x and 4x upscaling powered by **Real-ESRGAN** (Photo & Anime models), integrated **CodeFormer Face Restoration** with fine-grained fidelity blending (`0.0`–`1.0`), and optional diffusion texture micro-refinement.
 - **📦 Lossless Metadata & SQLite Gallery**:
   Full generation parameters, seeds, LoRAs, and hardware telemetry embedded into PNG text chunks (`tEXt`/`zTXt`) and indexed in SQLite.
 - **🖥️ Zero-Config Windows 11 Launchers**:
@@ -122,14 +122,14 @@ antigravity-diffusion-studio/
 │   │   │   └── qwen/               # Qwen-Image adapter
 │   │   ├── prompt_engine/          # StyleComposer + LM Studio Client + Rule Analyzer
 │   │   ├── gallery/                # PNG metadata chunk reader/writer
-│   │   └── editing/                # Inpainting, Outpainting, and 2x/4K Upscaler
+│   │   └── editing/                # Real-ESRGAN (2x/4x), CodeFormer Face Restore, Lanczos
 │   ├── requirements.txt            # Core backend dependencies (excluding torch)
 │   ├── requirements-torch-cu130.txt# Deterministic CUDA 13.0 / RTX 5080 torch
 │   └── requirements-torch-cu126.txt# Deterministic CUDA 12.6 torch
 ├── frontend/                       # React 19 + TypeScript + Vite UI
 │   ├── src/
-│   │   ├── components/             # PromptBar, ImagePreview, ReferenceImagePanel, InpaintCanvas, AdvancedSettings
-│   │   ├── pages/                  # GeneratePage, ModelsPage, GalleryPage, EditPage, LoRAPage, SystemPage
+│   │   ├── components/             # Header, PromptBar, AspectPicker, ImagePreview, ReferenceImagePanel, SuperResolutionModal
+│   │   ├── pages/                  # GeneratePage, GalleryPage
 │   │   ├── services/               # Typed API Client & Adaptive Polling
 │   │   └── types.ts                # TypeScript definitions mirroring GenerationConfig
 ├── config/                         # Configuration & Style Presets (Portable relative paths)
@@ -138,7 +138,8 @@ antigravity-diffusion-studio/
 ├── scripts/                        # Utility & Diagnostic Scripts
 │   ├── preflight_check.py          # Detailed CUDA & hardware telemetry check
 │   └── download_models.py          # Terminal model downloader
-├── tests/                          # Comprehensive PyTest Automated Test Suite (28/28 Passing)
+├── tests/                          # Comprehensive PyTest Automated Test Suite (35/35 Passing)
+│   ├── test_unit_ai_upscaler.py    # Real-ESRGAN, CodeFormer, and latent preview tests
 │   ├── test_unit_config.py         # Config, styles, schedulers, LoRA & IP-Adapter compatibility tests
 │   ├── test_unit_cancellation_and_lifecycle.py # Cancellation, seed resolution, OOM, LoRA lifecycle
 │   ├── test_unit_gallery_metadata.py # PNG metadata roundtrip & SQLite tests
@@ -167,7 +168,7 @@ Antigravity Diffusion Studio enforces step-aware scheduler mapping dynamically o
 | **4 Steps** | `Euler`, `DPM++ 2M Karras` | Partial compatibility tier; other samplers fallback to `Euler` |
 | **8 Steps** | `Euler`, `DPM++ 2M Karras`, `Euler Ancestral`, `DDIM`, etc. | Full high-speed suite available |
 
-- **Frontend Toast Notifications**: When switching step counts to a tighter tier while an incompatible sampler is selected, the UI automatically adjusts the sampler to `Euler` and displays a non-intrusive warning toast.
+- **Integrated Studio Selector**: Embedded directly inside the primary generation panel under *Fine-Tune Parameters*. The UI dynamically renders the allowed schedulers based on the current step count (2-step: Euler; 4-step: Euler, DPM++ 2M Karras; 8-step: full suite) and applies instantaneous auto-fallback to Euler if steps are reduced.
 - **Dynamic API Discovery**: `GET /api/models/{model_id}/samplers?steps={step_count}` returns the exact compatible list for any model architecture and step setting.
 - **Backend Guard**: `SchedulerFactory.create_scheduler(..., steps=N)` validates step compatibility and applies soft fallbacks with structured logging instead of failing jobs.
 
@@ -189,7 +190,7 @@ Condition image synthesis with visual cues using IP-Adapter:
 
 ## ⚙️ Configuration & VRAM Strategies
 
-Settings can be customized in `config/default_settings.json` or through the **Settings** tab in the UI:
+Settings can be customized in `config/default_settings.json` or live through the studio controls:
 
 ```json
 {
@@ -236,9 +237,12 @@ Run the comprehensive PyTest test suite:
 ```bash
 .venv\Scripts\python.exe -m pytest -v
 ```
-All 28 tests validate:
+All 35 tests validate:
 - Canonical `GenerationConfig` validation, dimension quantization (multiples of 8), and IP-Adapter fields.
 - Step-aware sampler filtering and automatic fallback behavior for Z-Image Turbo.
+- Multi-stage neural AI Super-Resolution (Real-ESRGAN RRDBNet architecture, 2x/4x scaling).
+- CodeFormer face restoration fidelity blending and post-processing compositing.
+- Real-time latent step preview decoding (`decode_latents_to_preview_pil`).
 - Deterministic seed resolution before inference.
 - Guaranteed `CANCELLED` job state persistence.
 - Zero silent fakes when checkpoints are missing (`ModelLoadError`).
@@ -252,7 +256,7 @@ All 28 tests validate:
 # Type check & production bundle build
 npm --prefix frontend run build
 
-# Code linting
+# Code linting (Oxlint / ESLint - 0 errors, 0 warnings)
 npm --prefix frontend run lint
 ```
 

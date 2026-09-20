@@ -1,6 +1,7 @@
 import {
   GenerationJob, ModelInfo, GalleryItem, SystemStatus,
-  RoutingDecision, StylePreset, LoRAInfo, VRAMStrategy
+  RoutingDecision, StylePreset, LoRAInfo, VRAMStrategy,
+  UpscaleParams, UpscaleResult
 } from '../types';
 
 const API_BASE = 'http://127.0.0.1:7860';
@@ -81,18 +82,7 @@ export const api = {
     return res.json();
   },
 
-  async upscaleImage(params: {
-    image_url?: string;
-    image_path?: string;
-    scale?: number;
-  }): Promise<{
-    success: boolean;
-    output_url: string;
-    output_path: string;
-    width: number;
-    height: number;
-    scale: number;
-  }> {
+  async upscaleImage(params: UpscaleParams): Promise<UpscaleResult> {
     const res = await fetch(`${API_BASE}/api/upscale`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

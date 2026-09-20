@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { GenerationJob } from '../types';
 import { api } from '../services/api';
+import { SuperResolutionModal } from './SuperResolutionModal';
 
 interface ImagePreviewProps {
   currentJob: GenerationJob | null;
@@ -30,6 +31,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   onDelete
 }) => {
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showSuperResModal, setShowSuperResModal] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [upscaleNotice, setUpscaleNotice] = useState<string | null>(null);
@@ -50,12 +52,16 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
 
   // Preview image source: base64 preview while generating, or final output url
   let imageSrc: string | null = null;
-  if (currentJob?.preview_base64) {
-    imageSrc = `data:image/jpeg;base64,${currentJob.preview_base64}`;
+  if (currentJob) {
+    if (currentJob.preview_base64) {
+      imageSrc = `data:image/jpeg;base64,${currentJob.preview_base64}`;
+    } else if (currentJob.output_image_url) {
+      imageSrc = `http://127.0.0.1:7860${currentJob.output_image_url}`;
+    }
   } else if (upscaledUrl) {
     imageSrc = `http://127.0.0.1:7860${upscaledUrl}`;
-  } else if (displayJob?.output_image_url) {
-    imageSrc = `http://127.0.0.1:7860${displayJob.output_image_url}`;
+  } else if (lastCompletedJob?.output_image_url) {
+    imageSrc = `http://127.0.0.1:7860${lastCompletedJob.output_image_url}`;
   }
 
   // Handle Height Resizing Drag
@@ -101,10 +107,12 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   }, []);
 
   // Reset upscaled URL whenever active generation changes
-  useEffect(() => {
+  const [prevJobId, setPrevJobId] = useState(displayJob?.id);
+  if (displayJob?.id !== prevJobId) {
+    setPrevJobId(displayJob?.id);
     setUpscaledUrl(null);
     setUpscaleNotice(null);
-  }, [displayJob?.id]);
+  }
 
   const handleUpscale = async (scale: 2 | 4) => {
     const activeUrl = upscaledUrl || displayJob?.output_image_url;
@@ -230,10 +238,13 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
       }}>
         {imageSrc ? (
           <img
+            key={currentJob ? `${currentJob.id}_${currentJob.current_step}` : (lastCompletedJob?.id || 'static')}
             src={imageSrc}
             alt="Generated Result"
             onClick={() => setIsFullscreen(true)}
             style={{
+              width: '100%',
+              height: '100%',
               maxWidth: '100%',
               maxHeight: '100%',
               objectFit: 'contain',
@@ -244,6 +255,32 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             }}
             title="Click to view full screen"
           />
+        ) : currentJob ? (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '1rem',
+            color: 'var(--text-muted)'
+          }}>
+            <div style={{
+              width: 50,
+              height: 50,
+              borderRadius: '50%',
+              border: '3px solid rgba(99, 102, 241, 0.2)',
+              borderTopColor: '#818cf8',
+              animation: 'spin 0.8s linear infinite'
+            }} />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                {currentJob.state === 'loading_model' ? 'Loading model into VRAM...' : 'Starting diffusion synthesis...'}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                Preparing step 1 of {currentJob.total_steps}...
+              </div>
+            </div>
+          </div>
         ) : (
           <div style={{
             display: 'flex',
@@ -275,6 +312,43 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           </div>
         )}
 
+        {/* Floating Step Beacon in Output Window */}
+        {currentJob && currentJob.state === 'generating' && (
+          <div style={{
+            position: 'absolute',
+            top: '1rem',
+            left: '1rem',
+            zIndex: 30,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.35rem 0.85rem',
+            borderRadius: '9999px',
+            background: 'rgba(8, 11, 17, 0.85)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(99, 102, 241, 0.5)',
+            boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)',
+            color: '#e0e7ff',
+            fontSize: '0.8rem',
+            fontFamily: 'var(--font-mono)'
+          }}>
+            <span style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: '#10b981',
+              boxShadow: '0 0 10px #10b981',
+              display: 'inline-block'
+            }} />
+            <span style={{ fontWeight: 700 }}>
+              Step {currentJob.current_step} / {currentJob.total_steps}
+            </span>
+            <span style={{ color: '#d946ef', fontWeight: 600 }}>
+              ({Math.round(currentJob.progress)}%)
+            </span>
+          </div>
+        )}
+
         {/* Live Progress Bar Overlay */}
         {currentJob && currentJob.state !== 'complete' && currentJob.state !== 'failed' && (
           <div style={{
@@ -282,20 +356,22 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             bottom: 0,
             left: 0,
             right: 0,
-            background: 'rgba(15, 21, 34, 0.9)',
-            backdropFilter: 'blur(10px)',
+            background: 'rgba(15, 21, 34, 0.92)',
+            backdropFilter: 'blur(12px)',
             padding: '0.75rem 1.25rem',
             borderTop: '1px solid var(--border-subtle)',
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.35rem'
+            gap: '0.4rem',
+            zIndex: 30
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-              <span style={{ fontWeight: 600, color: 'var(--primary-light)', textTransform: 'capitalize' }}>
+              <span style={{ fontWeight: 600, color: 'var(--primary-light)', textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#6366f1' }} />
                 {currentJob.state.replace('_', ' ')}...
               </span>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
-                {currentJob.current_step} / {currentJob.total_steps} steps ({currentJob.progress}%)
+                Step {currentJob.current_step} of {currentJob.total_steps} ({currentJob.progress}%)
               </span>
             </div>
             <div style={{
@@ -309,9 +385,38 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
                 width: `${currentJob.progress}%`,
                 height: '100%',
                 background: 'linear-gradient(90deg, #6366f1, #d946ef)',
-                transition: 'width 0.15s ease'
+                transition: 'width 0.1s ease'
               }} />
             </div>
+
+            {/* Individual Step Segments (for steps <= 16) */}
+            {currentJob.total_steps > 0 && currentJob.total_steps <= 16 && (
+              <div style={{ display: 'flex', gap: '3px', marginTop: '2px' }}>
+                {Array.from({ length: currentJob.total_steps }, (_, idx) => {
+                  const stepNum = idx + 1;
+                  const isDone = stepNum < currentJob.current_step;
+                  const isCurrent = stepNum === currentJob.current_step;
+                  return (
+                    <div
+                      key={stepNum}
+                      style={{
+                        flex: 1,
+                        height: 3,
+                        borderRadius: 2,
+                        background: isDone
+                          ? '#a855f7'
+                          : isCurrent
+                          ? '#38bdf8'
+                          : 'rgba(255, 255, 255, 0.1)',
+                        boxShadow: isCurrent ? '0 0 6px #38bdf8' : 'none',
+                        transition: 'background 0.1s ease'
+                      }}
+                      title={`Step ${stepNum}`}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -454,6 +559,23 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             >
               <Zap size={14} color="#d946ef" className={isUpscaling ? 'spin' : ''} />
               <span>{isUpscaling ? '4K...' : 'Upscale 4K'}</span>
+            </button>
+
+            <button
+              onClick={() => setShowSuperResModal(true)}
+              disabled={isUpscaling}
+              className="btn btn-secondary"
+              style={{
+                padding: '0.4rem 0.75rem',
+                fontSize: '0.8rem',
+                borderColor: 'rgba(139, 92, 246, 0.4)',
+                background: 'rgba(139, 92, 246, 0.12)',
+                color: '#ddd6fe'
+              }}
+              title="Interactive AI Super-Resolution & Face Detailer"
+            >
+              <Sparkles size={14} color="#a78bfa" />
+              <span>AI Enhance...</span>
             </button>
 
             {upscaleNotice && (
@@ -649,6 +771,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             alt="Fullscreen Preview"
             onClick={(e) => e.stopPropagation()}
             style={{
+              width: '100%',
+              height: '100%',
               maxWidth: '96vw',
               maxHeight: '94vh',
               objectFit: 'contain',
@@ -658,6 +782,25 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             }}
           />
         </div>
+      )}
+
+      {showSuperResModal && imageSrc && (
+        <SuperResolutionModal
+          isOpen={showSuperResModal}
+          onClose={() => setShowSuperResModal(false)}
+          imageUrl={imageSrc}
+          imagePath={displayJob?.output_image_path}
+          prompt={displayJob?.prompt}
+          originalWidth={displayJob?.width || 1024}
+          originalHeight={displayJob?.height || 1024}
+          onUpscaleComplete={(res) => {
+            if (res.output_url) {
+              setUpscaledUrl(res.output_url);
+              setUpscaleNotice(`AI Enhanced to ${res.width}x${res.height}!`);
+              setTimeout(() => setUpscaleNotice(null), 5000);
+            }
+          }}
+        />
       )}
     </div>
   );

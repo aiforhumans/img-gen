@@ -282,9 +282,15 @@ class ZImageAdapter(BaseImageModelAdapter):
             app_logger.info(f"[ZImageAdapter] Executing REAL PyTorch inference ({steps} steps, {width}x{height}, guidance={guidance}, seed={actual_seed})")
             generator = torch.Generator(device="cuda" if torch.cuda.is_available() else "cpu").manual_seed(actual_seed)
 
+            from backend.app.models.latent_preview import decode_latents_to_preview_pil
+
             def step_end_callback(pipe_self, step_idx, timestep, callback_kwargs):
                 if callback:
-                    callback(step_idx + 1, steps, None)
+                    preview_img = None
+                    latents = callback_kwargs.get("latents") if callback_kwargs else None
+                    if latents is not None:
+                        preview_img = decode_latents_to_preview_pil(latents, target_width=width, target_height=height)
+                    callback(step_idx + 1, steps, preview_img)
                 return callback_kwargs
 
             # IP-Adapter reference image integration
@@ -348,6 +354,7 @@ class ZImageAdapter(BaseImageModelAdapter):
                 guidance_scale=guidance,
                 generator=generator,
                 callback_on_step_end=step_end_callback if callback else None,
+                callback_on_step_end_tensor_inputs=["latents"] if callback else None,
                 **ip_adapter_kwargs
             )
 
@@ -380,12 +387,12 @@ class ZImageAdapter(BaseImageModelAdapter):
         head_rad = int(min(width, height) * 0.22)
 
         for step in range(1, steps + 1):
-            time.sleep(0.01)
+            time.sleep(0.02)
             draw.ellipse(
                 [cx - head_rad, cy - head_rad, cx + head_rad, cy + head_rad],
                 fill=(rng.randint(210, 235), rng.randint(170, 195), rng.randint(150, 175))
             )
-            if callback and (step % 2 == 0 or step == steps):
+            if callback:
                 preview = img.copy().resize((min(width, 384), min(height, 384)), Image.Resampling.BILINEAR)
                 callback(step, steps, preview)
 

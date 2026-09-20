@@ -120,12 +120,21 @@ class UpscaleRequest(BaseModel):
     image_url: Optional[str] = None
     image_path: Optional[str] = None
     scale: int = 2 # 2 or 4
+    engine: str = "realesrgan_photo" # "realesrgan_photo", "realesrgan_anime", "classic_lanczos"
+    enable_face_restore: bool = False
+    face_fidelity: float = 0.7
+    enable_diffusion_refine: bool = False
+    diffusion_denoise: float = 0.28
+    prompt: Optional[str] = None
 
 @router.post("/upscale")
 async def upscale_image_endpoint(req: UpscaleRequest):
     """
-    High-fidelity 2x and 4x image upscaling with Lanczos interpolation,
-    unsharp detail sharpening, and gallery registration.
+    AI Super-Resolution and Detailer endpoint supporting:
+    - Real-ESRGAN Photo & Anime neural upscaling (2x and 4x)
+    - CodeFormer portrait and face restoration
+    - Generative micro-texture refinement
+    - Classic Lanczos fallback
     """
     from datetime import datetime
     from pathlib import Path
@@ -202,7 +211,18 @@ async def upscale_image_endpoint(req: UpscaleRequest):
         raise HTTPException(status_code=400, detail=f"Failed to open source image: {e}")
 
     scale = 4 if req.scale == 4 else 2
-    upscaled_img = upscaler_engine.upscale(source_img, scale=scale)
+    prompt_used = req.prompt or existing_meta.get("prompt", "")
+
+    upscaled_img = upscaler_engine.upscale(
+        source_img,
+        scale=scale,
+        engine=req.engine,
+        enable_face_restore=req.enable_face_restore,
+        face_fidelity=req.face_fidelity,
+        enable_diffusion_refine=req.enable_diffusion_refine,
+        diffusion_denoise=req.diffusion_denoise,
+        prompt=prompt_used
+    )
     new_w, new_h = upscaled_img.size
 
     # Save to outputs directory
@@ -219,8 +239,13 @@ async def upscale_image_endpoint(req: UpscaleRequest):
     meta_payload["created_at"] = datetime.now().isoformat()
     meta_payload["width"] = new_w
     meta_payload["height"] = new_h
-    meta_payload["prompt"] = existing_meta.get("prompt", "") + f" [Upscaled {scale}x]"
-    meta_payload["upscaled"] = f"{scale}x"
+    meta_payload["prompt"] = existing_meta.get("prompt", "") + f" [AI Upscaled {scale}x ({req.engine})]"
+    meta_payload["upscaled"] = f"{scale}x ({req.engine})"
+    meta_payload["upscale_engine"] = req.engine
+    meta_payload["face_restore"] = req.enable_face_restore
+    meta_payload["face_fidelity"] = req.face_fidelity
+    meta_payload["diffusion_refine"] = req.enable_diffusion_refine
+    meta_payload["diffusion_denoise"] = req.diffusion_denoise
 
     png_info = create_png_info(meta_payload)
     upscaled_img.save(out_img_path, format="PNG", pnginfo=png_info)
@@ -243,5 +268,8 @@ async def upscale_image_endpoint(req: UpscaleRequest):
         "output_path": str(out_img_path),
         "width": new_w,
         "height": new_h,
-        "scale": scale
+        "scale": scale,
+        "engine": req.engine,
+        "face_restore": req.enable_face_restore,
+        "diffusion_refine": req.enable_diffusion_refine
     }

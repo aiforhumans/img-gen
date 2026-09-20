@@ -291,9 +291,9 @@ class JobQueue:
                     job.current_step = step
                     job.progress = round((step / max(1, total_steps)) * 100, 1)
 
-                    if preview_img and settings.generation.live_preview:
+                    if preview_img:
                         buf = io.BytesIO()
-                        preview_img.save(buf, format="JPEG", quality=70)
+                        preview_img.save(buf, format="JPEG", quality=75)
                         job.preview_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
                 prompt_to_use = job.final_prompt or job.prompt

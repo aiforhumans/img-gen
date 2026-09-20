@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { GalleryItem } from '../types';
 import { api } from '../services/api';
+import { SuperResolutionModal } from '../components/SuperResolutionModal';
 
 interface GalleryPageProps {
   onReuseSettings: (item: GalleryItem) => void;
@@ -21,6 +22,7 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({
   const [modelFilter, setModelFilter] = useState<string>('');
   const [favoriteOnly, setFavoriteOnly] = useState<boolean>(false);
   const [selectedItem, setSelectedItem] = useState<GalleryItem | null>(null);
+  const [enhanceTargetItem, setEnhanceTargetItem] = useState<GalleryItem | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const fetchGallery = useCallback(async () => {
@@ -41,8 +43,28 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({
   }, [search, modelFilter, favoriteOnly]);
 
   useEffect(() => {
-    fetchGallery();
-  }, [fetchGallery]);
+    let isSubscribed = true;
+    api.getGallery({
+      search: search || undefined,
+      model: modelFilter || undefined,
+      favorite_only: favoriteOnly
+    }).then((res) => {
+      if (isSubscribed) {
+        setItems(res.items);
+        setTotal(res.total);
+        setIsLoading(false);
+      }
+    }).catch((err) => {
+      if (isSubscribed) {
+        console.error('Failed to load gallery:', err);
+        setIsLoading(false);
+      }
+    });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [search, modelFilter, favoriteOnly]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -358,6 +380,20 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({
                   <span>Reuse Prompt & Settings</span>
                 </button>
 
+                <button
+                  onClick={() => setEnhanceTargetItem(selectedItem)}
+                  className="btn btn-secondary"
+                  style={{
+                    width: '100%',
+                    borderColor: 'rgba(139, 92, 246, 0.4)',
+                    background: 'rgba(139, 92, 246, 0.12)',
+                    color: '#ddd6fe'
+                  }}
+                >
+                  <Sparkles size={15} color="#a78bfa" />
+                  <span>AI Super-Resolution & Detailer</span>
+                </button>
+
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   {onSendToEditor && (
                     <button
@@ -396,6 +432,21 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {enhanceTargetItem && (
+        <SuperResolutionModal
+          isOpen={!!enhanceTargetItem}
+          onClose={() => setEnhanceTargetItem(null)}
+          imageUrl={api.getImageUrl(enhanceTargetItem.id)}
+          imagePath={enhanceTargetItem.image_path}
+          prompt={enhanceTargetItem.prompt}
+          originalWidth={enhanceTargetItem.width}
+          originalHeight={enhanceTargetItem.height}
+          onUpscaleComplete={() => {
+            fetchGallery();
+          }}
+        />
       )}
     </div>
   );
