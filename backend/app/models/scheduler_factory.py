@@ -12,7 +12,10 @@ ARCHITECTURE_SCHEDULERS: Dict[str, List[str]] = {
     ],
     "zimage": [
         "Default (Recommended)",
-        "Euler"
+        "DPM++ SDE Karras",
+        "Euler",
+        "DPM++ 2M Karras",
+        "Euler Ancestral"
     ],
     "flux": [
         "Default (Recommended)",
