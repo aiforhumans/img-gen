@@ -6,14 +6,26 @@ interface SettingsPageProps {
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ settings: initialSettings }) => {
-  const [modelDir, setModelDir] = useState('F:\\img-gen\\models');
-  const [outputDir, setOutputDir] = useState('F:\\img-gen\\outputs');
-  const [cacheDir, setCacheDir] = useState('F:\\img-gen\\cache');
-  const [lmStudioEnabled, setLmStudioEnabled] = useState(true);
-  const [lmStudioUrl, setLmStudioUrl] = useState('http://127.0.0.1:1234/v1');
-  const [livePreview, setLivePreview] = useState(true);
-  const [saveMetadata, setSaveMetadata] = useState(true);
+  const [modelDir, setModelDir] = useState(initialSettings?.paths?.model_dirs?.[0] || 'models');
+  const [outputDir, setOutputDir] = useState(initialSettings?.paths?.output_dir || 'outputs');
+  const [cacheDir, setCacheDir] = useState(initialSettings?.paths?.cache_dir || 'cache');
+  const [lmStudioEnabled, setLmStudioEnabled] = useState(initialSettings?.lm_studio?.enabled ?? true);
+  const [lmStudioUrl, setLmStudioUrl] = useState(initialSettings?.lm_studio?.base_url || 'http://127.0.0.1:1234/v1');
+  const [livePreview, setLivePreview] = useState(initialSettings?.generation?.live_preview ?? true);
+  const [saveMetadata, setSaveMetadata] = useState(initialSettings?.generation?.save_metadata_to_png ?? true);
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  React.useEffect(() => {
+    if (initialSettings) {
+      if (initialSettings.paths?.model_dirs?.[0]) setModelDir(initialSettings.paths.model_dirs[0]);
+      if (initialSettings.paths?.output_dir) setOutputDir(initialSettings.paths.output_dir);
+      if (initialSettings.paths?.cache_dir) setCacheDir(initialSettings.paths.cache_dir);
+      if (initialSettings.lm_studio?.enabled !== undefined) setLmStudioEnabled(initialSettings.lm_studio.enabled);
+      if (initialSettings.lm_studio?.base_url) setLmStudioUrl(initialSettings.lm_studio.base_url);
+      if (initialSettings.generation?.live_preview !== undefined) setLivePreview(initialSettings.generation.live_preview);
+      if (initialSettings.generation?.save_metadata_to_png !== undefined) setSaveMetadata(initialSettings.generation.save_metadata_to_png);
+    }
+  }, [initialSettings]);
 
   const handleSave = () => {
     setSavedSuccess(true);

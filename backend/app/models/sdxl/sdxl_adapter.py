@@ -6,7 +6,9 @@ from typing import Dict, Any, List, Optional, Callable
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 import torch
 
-from backend.app.models.base_adapter import BaseImageModelAdapter
+from backend.app.models.base_adapter import BaseImageModelAdapter, is_dev_simulation_mode
+from backend.app.models.scheduler_factory import SchedulerFactory
+from backend.app.core.exceptions import ModelLoadError
 from backend.app.core.config import settings
 from backend.app.core.logger import app_logger
 
@@ -22,8 +24,10 @@ class SDXLAdapter(BaseImageModelAdapter):
 
     def _find_checkpoint(self) -> Optional[Path]:
         for mdir in settings.paths.model_dirs:
-            # Check models/sdxl then models/zimage-turbo
-            for sub in [self.model_id, "zimage-turbo"]:
+            subdirs = [self.model_id]
+            if self.model_id in ["sdxl", "zimage-turbo"]:
+                subdirs.extend(["zimage-turbo", "checkpoints"])
+            for sub in subdirs:
                 p = Path(mdir) / sub
                 if p.exists():
                     cands = [
@@ -48,38 +52,63 @@ class SDXLAdapter(BaseImageModelAdapter):
         self.current_vram_strategy = vram_strategy
 
         ckpt_path = self._find_checkpoint()
-        if ckpt_path and torch.cuda.is_available():
-            try:
-                from diffusers import StableDiffusionXLPipeline, EulerDiscreteScheduler
-                app_logger.info(f"[SDXLAdapter] Loading Diffusers pipeline from {ckpt_path}...")
-                dtype = torch.float16 if precision == "fp16" else torch.bfloat16
-                pipe = StableDiffusionXLPipeline.from_single_file(
-                    str(ckpt_path),
-                    torch_dtype=dtype
-                )
-                pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
-
-                if vram_strategy in ["BALANCED", "LOW_VRAM", "CPU_OFFLOAD"]:
-                    pipe.enable_model_cpu_offload()
-                    if vram_strategy in ["LOW_VRAM", "CPU_OFFLOAD"]:
-                        pipe.enable_vae_tiling()
-                    app_logger.info(f"[SDXLAdapter] Enabled model CPU offload for optimal RTX 5080 headroom.")
-                else:
-                    pipe.to("cuda")
-
-                self.pipeline = pipe
-                app_logger.info(f"[SDXLAdapter] Successfully loaded SDXL pipeline into memory!")
-            except Exception as e:
-                app_logger.error(f"[SDXLAdapter] Failed to load SDXL checkpoint: {e}", exc_info=True)
+        if not ckpt_path or not torch.cuda.is_available():
+            if not is_dev_simulation_mode():
+                self.is_loaded = False
                 self.pipeline = None
-        else:
-            app_logger.info(f"[SDXLAdapter] No standalone checkpoint found at {ckpt_path}, using fallback generator.")
+                raise ModelLoadError(f"No checkpoint weights found for '{self.name}'. Place model in models/sdxl/.")
+            app_logger.info(f"[SDXLAdapter] DEV_SIMULATION_MODE active: using mock generator.")
+            self.is_loaded = True
+            return True
 
-        self.is_loaded = True
-        return True
+        try:
+            from diffusers import StableDiffusionXLPipeline, EulerDiscreteScheduler
+            app_logger.info(f"[SDXLAdapter] Loading Diffusers pipeline from {ckpt_path}...")
+            dtype = torch.float16 if precision == "fp16" else torch.bfloat16
+            pipe = StableDiffusionXLPipeline.from_single_file(
+                str(ckpt_path),
+                torch_dtype=dtype
+            )
+            pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+
+            if vram_strategy == "FULL_GPU":
+                pipe.to(device)
+            elif vram_strategy == "BALANCED":
+                pipe.enable_model_cpu_offload()
+            elif vram_strategy == "LOW_VRAM":
+                pipe.enable_model_cpu_offload()
+                if hasattr(pipe, "enable_vae_tiling"):
+                    pipe.enable_vae_tiling()
+                elif hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_tiling"):
+                    pipe.vae.enable_tiling()
+                if hasattr(pipe, "enable_vae_slicing"):
+                    pipe.enable_vae_slicing()
+                elif hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_slicing"):
+                    pipe.vae.enable_slicing()
+            elif vram_strategy == "CPU_OFFLOAD":
+                pipe.enable_sequential_cpu_offload()
+                if hasattr(pipe, "enable_vae_tiling"):
+                    pipe.enable_vae_tiling()
+                elif hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_tiling"):
+                    pipe.vae.enable_tiling()
+            else:
+                pipe.to(device)
+
+            self.pipeline = pipe
+            self.is_loaded = True
+            app_logger.info(f"[SDXLAdapter] Successfully loaded SDXL pipeline into memory!")
+            return True
+        except Exception as e:
+            self.pipeline = None
+            self.is_loaded = False
+            app_logger.error(f"[SDXLAdapter] Failed to load SDXL checkpoint: {e}", exc_info=True)
+            if not is_dev_simulation_mode():
+                raise ModelLoadError(f"Failed to load checkpoint for {self.name}: {e}") from e
+            return False
 
     def unload(self) -> bool:
         app_logger.info(f"[SDXLAdapter] Unloading {self.name}")
+        self.unload_all_loras()
         self.pipeline = None
         self.is_loaded = False
         gc.collect()
@@ -102,7 +131,7 @@ class SDXLAdapter(BaseImageModelAdapter):
         return {
             "steps": 25,
             "guidance": 7.0,
-            "sampler": "Euler a",
+            "sampler": "Default (Recommended)",
             "scheduler": "Normal",
             "optimal_aspect_ratio": "1:1"
         }
@@ -113,10 +142,29 @@ class SDXLAdapter(BaseImageModelAdapter):
     def load_lora(self, lora_path: str, weight: float = 1.0) -> bool:
         app_logger.info(f"[SDXLAdapter] Attaching SDXL LoRA '{lora_path}' (weight={weight})")
         self.loaded_loras.append({"path": lora_path, "weight": weight})
+        if self.pipeline:
+            try:
+                self.pipeline.load_lora_weights(lora_path)
+            except Exception as e:
+                app_logger.warning(f"Could not load LoRA into pipeline: {e}")
         return True
 
     def unload_lora(self, lora_path: str) -> bool:
         self.loaded_loras = [l for l in self.loaded_loras if l["path"] != lora_path]
+        if self.pipeline:
+            try:
+                self.pipeline.unload_lora_weights()
+            except Exception:
+                pass
+        return True
+
+    def unload_all_loras(self) -> bool:
+        self.loaded_loras.clear()
+        if self.pipeline:
+            try:
+                self.pipeline.unload_lora_weights()
+            except Exception:
+                pass
         return True
 
     def generate(
@@ -128,12 +176,19 @@ class SDXLAdapter(BaseImageModelAdapter):
         steps: int = 25,
         guidance: float = 7.0,
         seed: int = -1,
+        sampler: str = "Default (Recommended)",
+        scheduler: str = "Default",
         callback: Optional[Callable[[int, int, Optional[Image.Image]], None]] = None
     ) -> Image.Image:
         actual_seed = random.randint(0, 2**32 - 1) if seed < 0 else seed
 
         if self.pipeline is not None:
-            app_logger.info(f"[SDXLAdapter] Executing REAL PyTorch inference on RTX 5080 ({steps} steps, {width}x{height}, seed={actual_seed})")
+            # Wire sampler
+            custom_sched = SchedulerFactory.create_scheduler(self.pipeline.scheduler.config, "sdxl", sampler)
+            if custom_sched:
+                self.pipeline.scheduler = custom_sched
+
+            app_logger.info(f"[SDXLAdapter] Executing REAL PyTorch inference ({steps} steps, {width}x{height}, seed={actual_seed})")
             generator = torch.Generator(device="cuda" if torch.cuda.is_available() else "cpu").manual_seed(actual_seed)
 
             def step_end_callback(pipe_self, step_idx, timestep, callback_kwargs):
@@ -153,12 +208,13 @@ class SDXLAdapter(BaseImageModelAdapter):
             )
             return output.images[0]
 
-        rng = random.Random(actual_seed)
+        if not is_dev_simulation_mode():
+            raise RuntimeError(f"Cannot generate: '{self.name}' weights are not loaded.")
 
+        rng = random.Random(actual_seed)
         img = Image.new("RGB", (width, height), (22, 22, 30))
         draw = ImageDraw.Draw(img)
 
-        # Base artistic backdrop
         c1 = (rng.randint(30, 90), rng.randint(20, 60), rng.randint(40, 100))
         c2 = (rng.randint(50, 120), rng.randint(80, 150), rng.randint(120, 200))
         for y in range(height):
@@ -169,8 +225,7 @@ class SDXLAdapter(BaseImageModelAdapter):
             draw.line([(0, y), (width, y)], fill=(r, g, b))
 
         for step in range(1, steps + 1):
-            time.sleep(0.02)
-            # Add composition layers
+            time.sleep(0.01)
             x1 = rng.randint(0, width // 2)
             y1 = rng.randint(0, height // 2)
             x2 = rng.randint(x1 + 50, width)
@@ -185,22 +240,22 @@ class SDXLAdapter(BaseImageModelAdapter):
         img = img.filter(ImageFilter.SMOOTH)
         return img
 
-    def img2img(self, image: Image.Image, prompt: str, negative_prompt: str = "", strength: float = 0.75, steps: int = 25, guidance: float = 7.0, seed: int = -1, callback=None) -> Image.Image:
+    def img2img(self, image: Image.Image, prompt: str, negative_prompt: str = "", strength: float = 0.75, steps: int = 25, guidance: float = 7.0, seed: int = -1, sampler: str = "Default (Recommended)", scheduler: str = "Default", callback=None) -> Image.Image:
         w, h = image.size
-        gen = self.generate(prompt, negative_prompt, w, h, steps, guidance, seed, callback)
+        gen = self.generate(prompt, negative_prompt, w, h, steps, guidance, seed, sampler, scheduler, callback)
         return Image.blend(image.convert("RGB"), gen, alpha=strength)
 
     def edit(self, image: Image.Image, instruction: str, seed: int = -1, callback=None) -> Image.Image:
         return self.img2img(image, instruction, strength=0.6, steps=25, seed=seed, callback=callback)
 
-    def inpaint(self, image: Image.Image, mask: Image.Image, prompt: str, negative_prompt: str = "", steps: int = 25, guidance: float = 7.0, seed: int = -1, callback=None) -> Image.Image:
+    def inpaint(self, image: Image.Image, mask: Image.Image, prompt: str, negative_prompt: str = "", steps: int = 25, guidance: float = 7.0, seed: int = -1, sampler: str = "Default (Recommended)", scheduler: str = "Default", callback=None) -> Image.Image:
         w, h = image.size
-        gen = self.generate(prompt, negative_prompt, w, h, steps, guidance, seed, callback)
+        gen = self.generate(prompt, negative_prompt, w, h, steps, guidance, seed, sampler, scheduler, callback)
         result = image.copy().convert("RGB")
         result.paste(gen, (0, 0), mask.resize((w, h)).convert("L"))
         return result
 
-    def outpaint(self, image: Image.Image, expand_left: int, expand_right: int, expand_top: int, expand_bottom: int, prompt: str, negative_prompt: str = "", steps: int = 25, guidance: float = 7.0, seed: int = -1, callback=None) -> Image.Image:
+    def outpaint(self, image: Image.Image, expand_left: int, expand_right: int, expand_top: int, expand_bottom: int, prompt: str, negative_prompt: str = "", steps: int = 25, guidance: float = 7.0, seed: int = -1, sampler: str = "Default (Recommended)", scheduler: str = "Default", callback=None) -> Image.Image:
         orig_w, orig_h = image.size
         new_w = orig_w + expand_left + expand_right
         new_h = orig_h + expand_top + expand_bottom
@@ -208,4 +263,4 @@ class SDXLAdapter(BaseImageModelAdapter):
         expanded.paste(image, (expand_left, expand_top))
         mask = Image.new("L", (new_w, new_h), 255)
         mask.paste(Image.new("L", (orig_w, orig_h), 0), (expand_left, expand_top))
-        return self.inpaint(expanded, mask, prompt, negative_prompt, steps, guidance, seed, callback)
+        return self.inpaint(expanded, mask, prompt, negative_prompt, steps, guidance, seed, sampler, scheduler, callback)

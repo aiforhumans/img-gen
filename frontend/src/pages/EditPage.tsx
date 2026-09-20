@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
-  Upload, Wand2, Brush, Maximize2, Sparkles, Image as ImageIcon,
-  Sliders, ArrowRight, Eye, RefreshCw
+  Upload, Wand2, Brush, Maximize2, Sparkles,
+  Sliders, Eye
 } from 'lucide-react';
 import { InpaintCanvas } from '../components/InpaintCanvas';
 import { OutpaintControls } from '../components/OutpaintControls';
@@ -70,6 +70,14 @@ export const EditPage: React.FC<EditPageProps> = ({
       const res = await api.submitGeneration({
         prompt: prompt,
         mode: 'edit',
+        edit_mode: activeSubTab,
+        init_image: imageSrc,
+        mask_image: (activeSubTab === 'inpaint' || activeSubTab === 'outpaint') ? maskBase64 : undefined,
+        strength: strength,
+        expand_left: expandLeft,
+        expand_right: expandRight,
+        expand_top: expandTop,
+        expand_bottom: expandBottom,
         steps: 25,
         guidance: 5.0
       });
@@ -87,7 +95,9 @@ export const EditPage: React.FC<EditPageProps> = ({
         } else if (job.state === 'failed' || job.state === 'cancelled') {
           clearInterval(poll);
           setIsProcessing(false);
-          alert(job.error_message || 'Edit operation failed.');
+          if (job.state === 'failed') {
+            alert(job.error_message || 'Edit operation failed.');
+          }
         }
       }, 500);
     } catch (err: any) {

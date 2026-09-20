@@ -2,25 +2,12 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from backend.app.core.generation_config import GenerationConfig
 from backend.app.core.job_queue import job_queue, GenerationJob, JobState
 from backend.app.routing.auto_router import auto_router, RoutingDecision
 from backend.app.prompt_engine.lm_studio_client import lm_studio_client
 
 router = APIRouter(prefix="/api", tags=["generation"])
-
-class GenerateRequest(BaseModel):
-    prompt: str
-    negative_prompt: str = ""
-    model: str = "auto"
-    mode: str = "auto"
-    aspect_ratio: str = "1:1"
-    quality: str = "balanced"
-    width: int = 1024
-    height: int = 1024
-    steps: int = 20
-    guidance: float = 7.0
-    seed: int = -1
-    loras: List[Dict[str, Any]] = Field(default_factory=list)
 
 class AnalyzePromptRequest(BaseModel):
     prompt: str
@@ -33,6 +20,8 @@ class PolishPromptRequest(BaseModel):
 @router.post("/analyze-prompt", response_model=RoutingDecision)
 async def analyze_prompt(req: AnalyzePromptRequest):
     """Returns the routing decision and analysis for a given prompt without executing generation."""
+    if not req.prompt.strip():
+        raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
     return auto_router.analyze(req.prompt, user_mode=req.mode)
 
 @router.post("/prompt/polish")
@@ -46,7 +35,7 @@ async def polish_prompt(req: PolishPromptRequest):
 
     is_lm_online = await lm_studio_client.is_available()
     polished = await lm_studio_client.enhance_prompt(req.prompt, style_name=req.style)
-    
+
     diff_chars = len(polished) - len(req.prompt)
     summary = f"+{diff_chars} characters added" if diff_chars >= 0 else f"{diff_chars} characters trimmed"
 
@@ -58,16 +47,18 @@ async def polish_prompt(req: PolishPromptRequest):
     }
 
 @router.post("/generate")
-async def generate_image(req: GenerateRequest):
-    """Submits a text-to-image job to the async generation queue."""
+async def generate_image(req: GenerationConfig):
+    """Submits a text-to-image or editing job to the async generation queue."""
     if not req.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
     job = GenerationJob(
         prompt=req.prompt,
+        original_prompt=req.original_prompt or req.prompt,
         negative_prompt=req.negative_prompt,
         model=req.model,
         mode=req.mode,
+        style=req.style,
         aspect_ratio=req.aspect_ratio,
         quality=req.quality,
         width=req.width,
@@ -75,7 +66,19 @@ async def generate_image(req: GenerateRequest):
         steps=req.steps,
         guidance=req.guidance,
         seed=req.seed,
-        loras=req.loras
+        sampler=req.sampler,
+        scheduler=req.scheduler,
+        loras=[l.model_dump() for l in req.loras],
+        vram_strategy=req.vram_strategy,
+        precision=req.precision,
+        edit_mode=req.edit_mode,
+        init_image=req.init_image,
+        mask_image=req.mask_image,
+        strength=req.strength,
+        expand_left=req.expand_left,
+        expand_right=req.expand_right,
+        expand_top=req.expand_top,
+        expand_bottom=req.expand_bottom
     )
     job_id = job_queue.submit_job(job)
     return {"job_id": job_id, "state": job.state.value}
@@ -97,7 +100,9 @@ async def get_job_status(job_id: str):
 async def cancel_job(job_id: str):
     """Cancels a pending or generating job."""
     success = job_queue.cancel_job(job_id)
-    return {"success": success, "job_id": job_id}
+    job = job_queue.get_job(job_id)
+    state = job.state.value if job else "unknown"
+    return {"success": success, "job_id": job_id, "state": state}
 
 @router.post("/jobs/clear")
 async def clear_completed_jobs():
@@ -116,12 +121,11 @@ async def upscale_image_endpoint(req: UpscaleRequest):
     High-fidelity 2x and 4x image upscaling with Lanczos interpolation,
     unsharp detail sharpening, and gallery registration.
     """
-    import io
-    from pathlib import Path
     from datetime import datetime
+    from pathlib import Path
     import time
     from PIL import Image
-    from backend.app.core.config import PROJECT_ROOT, settings
+    from backend.app.core.config import PROJECT_ROOT
     from backend.app.core.database import insert_generation
     from backend.app.gallery.metadata_manager import create_png_info, extract_metadata_from_png
     from backend.app.editing.upscaler import upscaler_engine

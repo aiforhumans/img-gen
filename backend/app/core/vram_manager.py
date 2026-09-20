@@ -150,16 +150,28 @@ class VRAMManager:
         """
         Escalates memory conservatism upon OOM or memory pressure.
         """
+        return self.step_down_strategy_from(self.current_strategy.value)
+
+    def step_down_strategy_from(self, strat_str: str) -> Optional[VRAMStrategy]:
+        """
+        Steps down from a specific strategy string:
+        FULL_GPU -> BALANCED -> LOW_VRAM -> CPU_OFFLOAD -> None
+        """
         progression = {
             VRAMStrategy.FULL_GPU: VRAMStrategy.BALANCED,
             VRAMStrategy.BALANCED: VRAMStrategy.LOW_VRAM,
             VRAMStrategy.LOW_VRAM: VRAMStrategy.CPU_OFFLOAD,
-            VRAMStrategy.CPU_OFFLOAD: None # Cannot step down further
+            VRAMStrategy.CPU_OFFLOAD: None
         }
-        next_strat = progression.get(self.current_strategy)
+        try:
+            curr = VRAMStrategy(strat_str)
+        except Exception:
+            curr = VRAMStrategy.BALANCED
+
+        next_strat = progression.get(curr)
         if next_strat:
             app_logger.warning(
-                f"[VRAMManager] Stepping down strategy from {self.current_strategy.value} to {next_strat.value}"
+                f"[VRAMManager] Stepping down strategy from {curr.value} to {next_strat.value}"
             )
             self.current_strategy = next_strat
         return next_strat

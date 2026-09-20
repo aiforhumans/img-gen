@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS generations (
     guidance REAL NOT NULL,
     sampler TEXT DEFAULT '',
     scheduler TEXT DEFAULT '',
+    style TEXT DEFAULT 'none',
+    aspect_ratio TEXT DEFAULT '1:1',
+    quality TEXT DEFAULT 'balanced',
+    mode TEXT DEFAULT 'auto',
+    oom_retries INTEGER DEFAULT 0,
     width INTEGER NOT NULL,
     height INTEGER NOT NULL,
     generation_time REAL DEFAULT 0.0,
@@ -44,6 +49,24 @@ async def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(INIT_SQL)
+
+        # Migration: ensure newly introduced columns exist in case table was created earlier
+        cursor = await db.execute("PRAGMA table_info(generations)")
+        columns = [row[1] for row in await cursor.fetchall()]
+        new_cols = [
+            ("style", "TEXT DEFAULT 'none'"),
+            ("aspect_ratio", "TEXT DEFAULT '1:1'"),
+            ("quality", "TEXT DEFAULT 'balanced'"),
+            ("mode", "TEXT DEFAULT 'auto'"),
+            ("oom_retries", "INTEGER DEFAULT 0")
+        ]
+        for col_name, col_type in new_cols:
+            if col_name not in columns:
+                try:
+                    await db.execute(f"ALTER TABLE generations ADD COLUMN {col_name} {col_type}")
+                except Exception:
+                    pass
+
         await db.commit()
     app_logger.info(f"Database initialized at {DB_PATH}")
 
@@ -51,7 +74,8 @@ async def insert_generation(data: Dict[str, Any]) -> str:
     fields = [
         "id", "created_at", "prompt", "enhanced_prompt", "negative_prompt",
         "model", "model_version", "loras", "seed", "steps", "guidance",
-        "sampler", "scheduler", "width", "height", "generation_time",
+        "sampler", "scheduler", "style", "aspect_ratio", "quality", "mode", "oom_retries",
+        "width", "height", "generation_time",
         "peak_vram_mb", "vram_strategy", "gpu_name", "image_path",
         "thumbnail_path", "is_favorite", "rating", "tags"
     ]
@@ -59,7 +83,6 @@ async def insert_generation(data: Dict[str, Any]) -> str:
     names = ", ".join(fields)
     sql = f"INSERT OR REPLACE INTO generations ({names}) VALUES ({placeholders})"
 
-    # Ensure JSON serializable string fields
     payload = dict(data)
     if isinstance(payload.get("loras"), (list, dict)):
         payload["loras"] = json.dumps(payload["loras"])
@@ -67,8 +90,17 @@ async def insert_generation(data: Dict[str, Any]) -> str:
         payload["tags"] = json.dumps(payload["tags"])
 
     for field in fields:
-        if field not in payload:
-            payload[field] = "" if field in ["enhanced_prompt", "negative_prompt", "sampler", "scheduler", "thumbnail_path", "model_version"] else 0
+        if field not in payload or payload[field] is None:
+            if field in ["enhanced_prompt", "negative_prompt", "sampler", "scheduler", "style", "aspect_ratio", "quality", "mode", "thumbnail_path", "model_version", "vram_strategy", "gpu_name"]:
+                payload[field] = ""
+            elif field in ["seed", "steps", "width", "height", "oom_retries", "is_favorite", "rating"]:
+                payload[field] = 0
+            elif field in ["guidance", "generation_time", "peak_vram_mb"]:
+                payload[field] = 0.0
+            elif field in ["tags", "loras"]:
+                payload[field] = "[]"
+            else:
+                payload[field] = ""
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(sql, payload)
@@ -113,7 +145,15 @@ async def list_generations(
         query_params = list(params) + [limit, offset]
         async with db.execute(query_sql, query_params) as cursor:
             rows = await cursor.fetchall()
-            results = [dict(row) for row in rows]
+            results = []
+            for row in rows:
+                d = dict(row)
+                if isinstance(d.get("loras"), str):
+                    try:
+                        d["loras"] = json.loads(d["loras"])
+                    except Exception:
+                        d["loras"] = []
+                results.append(d)
 
     return results, total_count
 
@@ -157,4 +197,12 @@ async def get_generation_by_id(generation_id: str) -> Optional[Dict[str, Any]]:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM generations WHERE id = ?", (generation_id,)) as cursor:
             row = await cursor.fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            d = dict(row)
+            if isinstance(d.get("loras"), str):
+                try:
+                    d["loras"] = json.loads(d["loras"])
+                except Exception:
+                    d["loras"] = []
+            return d

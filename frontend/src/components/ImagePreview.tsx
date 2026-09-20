@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Download, Trash2, Sliders, Brush, Maximize2, RefreshCw,
-  Sparkles, Layers, Info, Check, Copy, ExternalLink, Activity, Zap
+  Sparkles, Info, Check, Copy, Zap
 } from 'lucide-react';
 import { GenerationJob } from '../types';
 import { api } from '../services/api';
@@ -14,6 +14,7 @@ interface ImagePreviewProps {
   onInpaint: (imageUrl: string, prompt: string) => void;
   onOutpaint: (imageUrl: string, prompt: string) => void;
   onReusePrompt: (prompt: string, negPrompt: string) => void;
+  onReuseSettings?: (job: GenerationJob) => void;
   onDelete: (id: string) => void;
 }
 
@@ -25,20 +26,23 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   onInpaint,
   onOutpaint,
   onReusePrompt,
+  onReuseSettings,
   onDelete
 }) => {
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [upscaleNotice, setUpscaleNotice] = useState<string | null>(null);
+  const [upscaledUrl, setUpscaledUrl] = useState<string | null>(null);
 
   const displayJob = currentJob || lastCompletedJob;
-  const isGenerating = currentJob && currentJob.state === 'generating';
 
   // Preview image source: base64 preview while generating, or final output url
   let imageSrc: string | null = null;
   if (currentJob?.preview_base64) {
     imageSrc = `data:image/jpeg;base64,${currentJob.preview_base64}`;
+  } else if (upscaledUrl) {
+    imageSrc = `http://127.0.0.1:7860${upscaledUrl}`;
   } else if (displayJob?.output_image_url) {
     imageSrc = `http://127.0.0.1:7860${displayJob.output_image_url}`;
   }
@@ -53,9 +57,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
         scale: scale
       });
       if (res.output_url) {
-        displayJob.output_image_url = res.output_url;
-        displayJob.width = res.width;
-        displayJob.height = res.height;
+        setUpscaledUrl(res.output_url);
         setUpscaleNotice(`Upscaled to ${res.width}x${res.height}!`);
         setTimeout(() => setUpscaleNotice(null), 4000);
       }
@@ -270,10 +272,16 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             </button>
 
             <button
-              onClick={() => onReusePrompt(displayJob.prompt, displayJob.negative_prompt)}
+              onClick={() => {
+                if (onReuseSettings) {
+                  onReuseSettings(displayJob);
+                } else {
+                  onReusePrompt(displayJob.prompt, displayJob.negative_prompt);
+                }
+              }}
               className="btn btn-secondary"
               style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
-              title="Copy prompt and settings to generator"
+              title="Copy prompt and full settings to generator"
             >
               <Sparkles size={14} />
               <span>Reuse</span>
@@ -387,7 +395,17 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
             <div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: 2 }}>Prompt:</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Prompt:</span>
+                <button
+                  onClick={handleCopyPrompt}
+                  className="btn btn-secondary"
+                  style={{ padding: '0.15rem 0.45rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 4 }}
+                >
+                  {copied ? <Check size={11} color="#10b981" /> : <Copy size={11} />}
+                  <span>{copied ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
               <div style={{ background: 'var(--bg-input)', padding: '0.65rem', borderRadius: 6 }}>
                 {displayJob.prompt}
               </div>

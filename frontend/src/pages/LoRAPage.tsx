@@ -1,9 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, RefreshCw, Heart, Tag, Sliders, Check } from 'lucide-react';
+import { RefreshCw, Tag, Check, Plus } from 'lucide-react';
 import { LoRAInfo } from '../types';
 import { api } from '../services/api';
 
-export const LoRAPage: React.FC = () => {
+interface LoRAPageProps {
+  activeLoras?: Array<{ id: string; name: string; path: string; weight: number }>;
+  onToggleLoRA?: (lora: LoRAInfo, weight: number) => void;
+  onUpdateWeight?: (loraId: string, weight: number) => void;
+}
+
+export const LoRAPage: React.FC<LoRAPageProps> = ({
+  activeLoras = [],
+  onToggleLoRA,
+  onUpdateWeight
+}) => {
   const [loras, setLoras] = useState<LoRAInfo[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [strengths, setStrengths] = useState<Record<string, number>>({});
@@ -14,7 +24,10 @@ export const LoRAPage: React.FC = () => {
       const data = await api.getLoRAs();
       setLoras(data);
       const strMap: Record<string, number> = {};
-      data.forEach(l => { strMap[l.id] = l.default_strength; });
+      data.forEach(l => {
+        const existingActive = activeLoras.find(al => al.id === l.id || al.path === l.path);
+        strMap[l.id] = existingActive ? existingActive.weight : l.default_strength;
+      });
       setStrengths(strMap);
     } catch (err) {
       console.error('Failed to load LoRAs:', err);
@@ -39,6 +52,24 @@ export const LoRAPage: React.FC = () => {
     }
   };
 
+  const isLoRAActive = (lora: LoRAInfo) => {
+    return activeLoras.some(al => al.id === lora.id || al.path === lora.path);
+  };
+
+  const handleToggle = (lora: LoRAInfo) => {
+    const w = strengths[lora.id] ?? lora.default_strength;
+    if (onToggleLoRA) {
+      onToggleLoRA(lora, w);
+    }
+  };
+
+  const handleSliderChange = (loraId: string, val: number) => {
+    setStrengths(prev => ({ ...prev, [loraId]: val }));
+    if (onUpdateWeight) {
+      onUpdateWeight(loraId, val);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div className="glass-panel" style={{ padding: '1.25rem' }}>
@@ -49,10 +80,15 @@ export const LoRAPage: React.FC = () => {
               Scan local Safetensors LoRAs from <code>models/loras</code>. Incompatible architecture pairings are prevented automatically.
             </p>
           </div>
-          <button onClick={handleRescan} className="btn btn-secondary">
-            <RefreshCw size={15} />
-            <span>Scan LoRA Folder</span>
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <div className="badge badge-cyan" style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}>
+              {activeLoras.length} Active for Generation
+            </div>
+            <button onClick={handleRescan} className="btn btn-secondary">
+              <RefreshCw size={15} />
+              <span>Scan LoRA Folder</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -66,72 +102,98 @@ export const LoRAPage: React.FC = () => {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
-          {loras.map((lora) => (
-            <div
-              key={lora.id}
-              className="glass-panel"
-              style={{
-                padding: '1.25rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.85rem'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>{lora.name}</h3>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                    {lora.filename} ({lora.file_size_mb} MB)
+          {loras.map((lora) => {
+            const active = isLoRAActive(lora);
+            const currentStrength = strengths[lora.id] ?? lora.default_strength;
+
+            return (
+              <div
+                key={lora.id}
+                className="glass-panel"
+                style={{
+                  padding: '1.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.85rem',
+                  borderColor: active ? 'var(--primary)' : 'var(--border-subtle)',
+                  background: active ? 'rgba(99, 102, 241, 0.06)' : undefined
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>{lora.name}</h3>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      {lora.filename} ({lora.file_size_mb} MB)
+                    </div>
+                  </div>
+                  <div className="badge badge-indigo">
+                    {lora.base_architecture.toUpperCase()}
                   </div>
                 </div>
-                <div className="badge badge-indigo">
-                  {lora.base_architecture.toUpperCase()}
-                </div>
-              </div>
 
-              {/* Trigger Words */}
-              <div>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                  <Tag size={12} /> Trigger Words:
-                </span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                  {lora.trigger_words.map((tw) => (
-                    <span
-                      key={tw}
-                      style={{
-                        background: 'var(--bg-input)',
-                        padding: '0.2rem 0.5rem',
-                        borderRadius: 4,
-                        fontSize: '0.7rem',
-                        color: 'var(--accent-cyan)'
-                      }}
-                    >
-                      {tw}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Strength Slider */}
-              <div style={{ background: 'var(--bg-input)', padding: '0.65rem', borderRadius: 6 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 600 }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Adapter Strength:</span>
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>
-                    {(strengths[lora.id] ?? lora.default_strength).toFixed(2)}
+                {/* Trigger Words */}
+                <div>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                    <Tag size={12} /> Trigger Words:
                   </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    {lora.trigger_words.map((tw) => (
+                      <span
+                        key={tw}
+                        style={{
+                          background: 'var(--bg-input)',
+                          padding: '0.2rem 0.5rem',
+                          borderRadius: 4,
+                          fontSize: '0.7rem',
+                          color: 'var(--accent-cyan)'
+                        }}
+                      >
+                        {tw}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min={0.1}
-                  max={1.5}
-                  step={0.05}
-                  value={strengths[lora.id] ?? lora.default_strength}
-                  onChange={(e) => setStrengths({ ...strengths, [lora.id]: parseFloat(e.target.value) })}
-                  style={{ width: '100%', marginTop: 4, accentColor: 'var(--primary)' }}
-                />
+
+                {/* Strength Slider */}
+                <div style={{ background: 'var(--bg-input)', padding: '0.65rem', borderRadius: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 600 }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Adapter Strength:</span>
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>
+                      {currentStrength.toFixed(2)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={1.5}
+                    step={0.05}
+                    value={currentStrength}
+                    onChange={(e) => handleSliderChange(lora.id, parseFloat(e.target.value))}
+                    style={{ width: '100%', marginTop: 4, accentColor: 'var(--primary)' }}
+                  />
+                </div>
+
+                {/* Toggle Activation Button */}
+                <button
+                  onClick={() => handleToggle(lora)}
+                  className={active ? "btn btn-primary" : "btn btn-secondary"}
+                  style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem' }}
+                >
+                  {active ? (
+                    <>
+                      <Check size={14} />
+                      <span>Active for Generation</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={14} />
+                      <span>Enable for Generation</span>
+                    </>
+                  )}
+                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

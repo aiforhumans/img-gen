@@ -50,6 +50,9 @@ interface GeneratePageProps {
   setSampler: (s: string) => void;
   vramStrategy: VRAMStrategy;
   setVRAMStrategy: (s: VRAMStrategy) => void;
+  activeLoras?: Array<{ id?: string; name?: string; path: string; weight: number }>;
+  onRemoveLoRA?: (idOrPath: string) => void;
+  onReuseJob?: (job: GenerationJob) => void;
 }
 
 export const GeneratePage: React.FC<GeneratePageProps> = ({
@@ -90,7 +93,10 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
   sampler,
   setSampler,
   vramStrategy,
-  setVRAMStrategy
+  setVRAMStrategy,
+  activeLoras = [],
+  onRemoveLoRA,
+  onReuseJob
 }) => {
   const [isAdvOpen, setIsAdvOpen] = useState(false);
   const [analysisDecision, setAnalysisDecision] = useState<RoutingDecision | null>(null);
@@ -177,6 +183,31 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
           />
         )}
 
+        {/* Active LoRA Chips */}
+        {activeLoras.length > 0 && (
+          <div className="glass-panel" style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Active LoRAs:</span>
+            {activeLoras.map((l) => (
+              <span
+                key={l.id || l.path}
+                className="badge badge-indigo"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+              >
+                <span>{l.name || l.id} ({l.weight.toFixed(2)})</span>
+                {onRemoveLoRA && (
+                  <button
+                    onClick={() => onRemoveLoRA(l.id || l.path)}
+                    style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: '0.9rem', lineHeight: 1 }}
+                    title="Remove LoRA from active generation"
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* Advanced Model & Generation Controls Drawer */}
         <AdvancedSettingsDrawer
           isOpen={isAdvOpen}
@@ -207,6 +238,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
           onInpaint={(src, p) => onSendToInpaint(src, p)}
           onOutpaint={(src, p) => onSendToOutpaint(src, p)}
           onReusePrompt={handleReusePrompt}
+          onReuseSettings={onReuseJob}
           onDelete={onDeleteJob}
         />
       </div>

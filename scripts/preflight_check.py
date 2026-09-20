@@ -90,8 +90,8 @@ def run_preflight():
 
     # 5. Network & Server Host
     print(f"\n{BOLD}{BLUE}[5/5] Application Server Endpoint:{RESET}")
-    print(f"  * Host Binding:     {GREEN}http://127.0.0.1:7860{RESET} (Strict Localhost)")
-    print(f"  * VRAM Strategy:    {GREEN}FULL_GPU (Resident in RTX 5080 VRAM){RESET}")
+    print(f"  * Host Binding:     {GREEN}http://{settings.general.host}:{settings.general.port}{RESET} (Strict Localhost)")
+    print(f"  * VRAM Strategy:    {GREEN}{settings.vram.default_strategy}{RESET}")
     print(f"\n{BOLD}{GREEN}======================================================================{RESET}")
     print(f"{BOLD}{GREEN} [READY] Launching FastAPI uvicorn application server...             {RESET}")
     print(f"{BOLD}{GREEN}======================================================================\n{RESET}")

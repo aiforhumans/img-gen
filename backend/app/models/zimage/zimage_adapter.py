@@ -6,7 +6,9 @@ from typing import Dict, Any, List, Optional, Callable
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 import torch
 
-from backend.app.models.base_adapter import BaseImageModelAdapter
+from backend.app.models.base_adapter import BaseImageModelAdapter, is_dev_simulation_mode
+from backend.app.models.scheduler_factory import SchedulerFactory
+from backend.app.core.exceptions import ModelLoadError
 from backend.app.core.config import settings
 from backend.app.core.logger import app_logger
 
@@ -22,7 +24,6 @@ class ZImageAdapter(BaseImageModelAdapter):
 
     def _find_checkpoint(self) -> Optional[Path]:
         for mdir in settings.paths.model_dirs:
-            # Check prioritized subdirectories
             for sub in ["juggernaut-xl", self.model_id, "checkpoints", "sdxl"]:
                 p = Path(mdir) / sub
                 if p.exists():
@@ -31,7 +32,7 @@ class ZImageAdapter(BaseImageModelAdapter):
                         if f.is_file() and f.stat().st_size > 1024 * 1024 * 500 and "unet" not in f.name.lower() and "lora" not in f.name.lower():
                             return f
 
-                    # 2. Prioritize full standalone SDXL Lightning checkpoints (never unet-only)
+                    # 2. Standalone SDXL Lightning checkpoints
                     full_cands = [
                         p / "sdxl_lightning_8step.safetensors",
                         p / "sdxl_lightning_4step.safetensors",
@@ -42,7 +43,7 @@ class ZImageAdapter(BaseImageModelAdapter):
                         if c.exists() and c.is_file() and c.stat().st_size > 1024 * 1024 * 500:
                             return c
 
-                    # 3. Any complete base checkpoint (strictly ignoring unet-only and lora files)
+                    # 3. Any complete base checkpoint
                     for f in p.glob("**/*.safetensors"):
                         if f.is_file() and f.stat().st_size > 1024 * 1024 * 500 and "unet" not in f.name.lower() and "lora" not in f.name.lower():
                             return f
@@ -56,7 +57,6 @@ class ZImageAdapter(BaseImageModelAdapter):
                 candidate = Path(mdir) / sub / target_name
                 if candidate.exists():
                     return candidate
-                # Also check without _lora suffix or wildcards
                 for f in (Path(mdir) / sub).glob(f"*{steps}step*lora*.safetensors"):
                     return f
         return None
@@ -70,52 +70,71 @@ class ZImageAdapter(BaseImageModelAdapter):
         self.current_vram_strategy = vram_strategy
 
         ckpt_path = self._find_checkpoint()
-        if ckpt_path and torch.cuda.is_available():
-            try:
-                from diffusers import StableDiffusionXLPipeline, EulerDiscreteScheduler
-                app_logger.info(f"[ZImageAdapter] Loading PyTorch Diffusers pipeline from {ckpt_path}...")
-                dtype = torch.float16 if precision == "fp16" else torch.bfloat16
-                pipe = StableDiffusionXLPipeline.from_single_file(
-                    str(ckpt_path),
-                    torch_dtype=dtype
-                )
-                pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
-
-                # RTX 5080 FULL_GPU vs offload strategy
-                has_large_vram = torch.cuda.is_available() and (torch.cuda.get_device_properties(0).total_memory / (1024**3) >= 12.0)
-                if vram_strategy == "FULL_GPU" or (vram_strategy == "BALANCED" and has_large_vram):
-                    pipe.to("cuda")
-                    app_logger.info(f"[ZImageAdapter] GPU Resident mode active on RTX 5080 (16GB VRAM) for unthrottled sub-2s generation.")
-                elif vram_strategy in ["LOW_VRAM", "CPU_OFFLOAD", "BALANCED"]:
-                    pipe.enable_model_cpu_offload()
-                    if vram_strategy in ["LOW_VRAM", "CPU_OFFLOAD"]:
-                        pipe.enable_vae_tiling()
-                    app_logger.info(f"[ZImageAdapter] Enabled model CPU offload (strategy={vram_strategy}).")
-                else:
-                    pipe.to("cuda")
-
-                self.pipeline = pipe
-                # Detect if the loaded checkpoint is already pre-distilled to a step count
-                self.active_lightning_step = None
-                for st in [2, 4, 8]:
-                    if f"{st}step" in ckpt_path.name.lower():
-                        self.active_lightning_step = st
-                        app_logger.info(f"[ZImageAdapter] Checkpoint is natively pre-distilled for {st} steps.")
-                        break
-
-                if self.active_lightning_step is None:
-                    # Foundation model (e.g. Juggernaut-XL): apply default 8-step lightning LoRA
-                    self._apply_lightning_step(8)
-
-                app_logger.info(f"[ZImageAdapter] Successfully initialized Turbo Photorealism pipeline!")
-            except Exception as e:
-                app_logger.error(f"[ZImageAdapter] Failed to load native checkpoint: {e}", exc_info=True)
+        if not ckpt_path or not torch.cuda.is_available():
+            if not is_dev_simulation_mode():
+                self.is_loaded = False
                 self.pipeline = None
-        else:
-            app_logger.info(f"[ZImageAdapter] No standalone checkpoint found at {ckpt_path}, using fallback generator.")
+                raise ModelLoadError(
+                    f"Weights not found for '{self.name}'. Place Juggernaut-XL or SDXL-Lightning checkpoints in models/."
+                )
+            app_logger.info(f"[ZImageAdapter] DEV_SIMULATION_MODE active: using mock generator.")
+            self.is_loaded = True
+            return True
 
-        self.is_loaded = True
-        return True
+        try:
+            from diffusers import StableDiffusionXLPipeline, EulerDiscreteScheduler
+            app_logger.info(f"[ZImageAdapter] Loading PyTorch Diffusers pipeline from {ckpt_path}...")
+            dtype = torch.float16 if precision == "fp16" else torch.bfloat16
+            pipe = StableDiffusionXLPipeline.from_single_file(
+                str(ckpt_path),
+                torch_dtype=dtype
+            )
+            pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+
+            # Apply VRAM Strategy
+            if vram_strategy == "FULL_GPU":
+                pipe.to(device)
+            elif vram_strategy == "BALANCED":
+                pipe.enable_model_cpu_offload()
+            elif vram_strategy == "LOW_VRAM":
+                pipe.enable_model_cpu_offload()
+                if hasattr(pipe, "enable_vae_tiling"):
+                    pipe.enable_vae_tiling()
+                elif hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_tiling"):
+                    pipe.vae.enable_tiling()
+                if hasattr(pipe, "enable_vae_slicing"):
+                    pipe.enable_vae_slicing()
+                elif hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_slicing"):
+                    pipe.vae.enable_slicing()
+            elif vram_strategy == "CPU_OFFLOAD":
+                pipe.enable_sequential_cpu_offload()
+                if hasattr(pipe, "enable_vae_tiling"):
+                    pipe.enable_vae_tiling()
+                elif hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_tiling"):
+                    pipe.vae.enable_tiling()
+            else:
+                pipe.to(device)
+
+            self.pipeline = pipe
+            self.active_lightning_step = None
+            for st in [2, 4, 8]:
+                if f"{st}step" in ckpt_path.name.lower():
+                    self.active_lightning_step = st
+                    break
+
+            if self.active_lightning_step is None:
+                self._apply_lightning_step(8)
+
+            self.is_loaded = True
+            app_logger.info(f"[ZImageAdapter] Successfully initialized Turbo Photorealism pipeline!")
+            return True
+        except Exception as e:
+            self.pipeline = None
+            self.is_loaded = False
+            app_logger.error(f"[ZImageAdapter] Failed to load native checkpoint: {e}", exc_info=True)
+            if not is_dev_simulation_mode():
+                raise ModelLoadError(f"Failed to load checkpoint for {self.name}: {e}") from e
+            return False
 
     def _apply_lightning_step(self, steps: int) -> bool:
         if not self.pipeline or self.active_lightning_step == steps:
@@ -139,6 +158,7 @@ class ZImageAdapter(BaseImageModelAdapter):
 
     def unload(self) -> bool:
         app_logger.info(f"[ZImageAdapter] Unloading {self.name}")
+        self.unload_all_loras()
         self.pipeline = None
         self.is_loaded = False
         gc.collect()
@@ -160,7 +180,7 @@ class ZImageAdapter(BaseImageModelAdapter):
         return {
             "steps": 8,
             "guidance": 1.5,
-            "sampler": "EulerDiscreteScheduler",
+            "sampler": "Default (Recommended)",
             "scheduler": "Turbo",
             "optimal_aspect_ratio": "3:4"
         }
@@ -186,6 +206,15 @@ class ZImageAdapter(BaseImageModelAdapter):
                 pass
         return True
 
+    def unload_all_loras(self) -> bool:
+        self.loaded_loras.clear()
+        if self.pipeline:
+            try:
+                self.pipeline.unload_lora_weights()
+            except Exception:
+                pass
+        return True
+
     def generate(
         self,
         prompt: str,
@@ -195,28 +224,31 @@ class ZImageAdapter(BaseImageModelAdapter):
         steps: int = 8,
         guidance: float = 1.5,
         seed: int = -1,
+        sampler: str = "Default (Recommended)",
+        scheduler: str = "Default",
         callback: Optional[Callable[[int, int, Optional[Image.Image]], None]] = None
     ) -> Image.Image:
         actual_seed = random.randint(0, 2**32 - 1) if seed < 0 else seed
 
         # Auto-adjust guidance and steps for Lightning turbo distillation
         if self.active_lightning_step is not None and steps > 12:
-            app_logger.info(f"[ZImageAdapter] Native {self.active_lightning_step}-step distilled checkpoint detected. Optimizing steps={self.active_lightning_step} and guidance=1.5 for ultra-fast photorealism.")
             steps = self.active_lightning_step
             guidance = 1.5
         elif steps <= 8 and guidance > 2.5:
             guidance = 1.5
 
-        # If real diffusers pipeline is loaded, run real PyTorch inference on RTX 5080!
         if self.pipeline is not None:
-            # Dynamically swap step LoRA if 2, 4, or 8 steps
+            # Configure scheduler if specified
+            custom_sched = SchedulerFactory.create_scheduler(self.pipeline.scheduler.config, "zimage", sampler)
+            if custom_sched:
+                self.pipeline.scheduler = custom_sched
+
             if steps in [2, 4, 8]:
                 self._apply_lightning_step(steps)
 
-            app_logger.info(f"[ZImageAdapter] Executing REAL PyTorch inference on RTX 5080 ({steps} steps, {width}x{height}, guidance={guidance}, seed={actual_seed})")
+            app_logger.info(f"[ZImageAdapter] Executing REAL PyTorch inference ({steps} steps, {width}x{height}, guidance={guidance}, seed={actual_seed})")
             generator = torch.Generator(device="cuda" if torch.cuda.is_available() else "cpu").manual_seed(actual_seed)
 
-            # Step progress callback adapter
             def step_end_callback(pipe_self, step_idx, timestep, callback_kwargs):
                 if callback:
                     callback(step_idx + 1, steps, None)
@@ -234,7 +266,10 @@ class ZImageAdapter(BaseImageModelAdapter):
             )
             return output.images[0]
 
-        # Fallback simulation generator if no weights exist
+        if not is_dev_simulation_mode():
+            raise RuntimeError(f"Cannot generate: '{self.name}' weights are not loaded.")
+
+        # Simulation fallback for dev testing
         rng = random.Random(actual_seed)
         img = Image.new("RGB", (width, height), (28, 26, 24))
         draw = ImageDraw.Draw(img)
@@ -251,7 +286,7 @@ class ZImageAdapter(BaseImageModelAdapter):
         head_rad = int(min(width, height) * 0.22)
 
         for step in range(1, steps + 1):
-            time.sleep(0.03)
+            time.sleep(0.01)
             draw.ellipse(
                 [cx - head_rad, cy - head_rad, cx + head_rad, cy + head_rad],
                 fill=(rng.randint(210, 235), rng.randint(170, 195), rng.randint(150, 175))
@@ -263,22 +298,22 @@ class ZImageAdapter(BaseImageModelAdapter):
         img = img.filter(ImageFilter.SMOOTH)
         return img
 
-    def img2img(self, image: Image.Image, prompt: str, negative_prompt: str = "", strength: float = 0.7, steps: int = 8, guidance: float = 1.5, seed: int = -1, callback=None) -> Image.Image:
+    def img2img(self, image: Image.Image, prompt: str, negative_prompt: str = "", strength: float = 0.7, steps: int = 8, guidance: float = 1.5, seed: int = -1, sampler: str = "Default (Recommended)", scheduler: str = "Default", callback=None) -> Image.Image:
         w, h = image.size
-        gen = self.generate(prompt, negative_prompt, w, h, steps, guidance, seed, callback)
+        gen = self.generate(prompt, negative_prompt, w, h, steps, guidance, seed, sampler, scheduler, callback)
         return Image.blend(image.convert("RGB"), gen, alpha=strength)
 
     def edit(self, image: Image.Image, instruction: str, seed: int = -1, callback=None) -> Image.Image:
         return self.img2img(image, instruction, strength=0.5, steps=8, seed=seed, callback=callback)
 
-    def inpaint(self, image: Image.Image, mask: Image.Image, prompt: str, negative_prompt: str = "", steps: int = 8, guidance: float = 1.5, seed: int = -1, callback=None) -> Image.Image:
+    def inpaint(self, image: Image.Image, mask: Image.Image, prompt: str, negative_prompt: str = "", steps: int = 8, guidance: float = 1.5, seed: int = -1, sampler: str = "Default (Recommended)", scheduler: str = "Default", callback=None) -> Image.Image:
         w, h = image.size
-        gen = self.generate(prompt, negative_prompt, w, h, steps, guidance, seed, callback)
+        gen = self.generate(prompt, negative_prompt, w, h, steps, guidance, seed, sampler, scheduler, callback)
         result = image.copy().convert("RGB")
         result.paste(gen, (0, 0), mask.resize((w, h)).convert("L"))
         return result
 
-    def outpaint(self, image: Image.Image, expand_left: int, expand_right: int, expand_top: int, expand_bottom: int, prompt: str, negative_prompt: str = "", steps: int = 8, guidance: float = 1.5, seed: int = -1, callback=None) -> Image.Image:
+    def outpaint(self, image: Image.Image, expand_left: int, expand_right: int, expand_top: int, expand_bottom: int, prompt: str, negative_prompt: str = "", steps: int = 8, guidance: float = 1.5, seed: int = -1, sampler: str = "Default (Recommended)", scheduler: str = "Default", callback=None) -> Image.Image:
         orig_w, orig_h = image.size
         new_w = orig_w + expand_left + expand_right
         new_h = orig_h + expand_top + expand_bottom
@@ -286,4 +321,4 @@ class ZImageAdapter(BaseImageModelAdapter):
         expanded.paste(image, (expand_left, expand_top))
         mask = Image.new("L", (new_w, new_h), 255)
         mask.paste(Image.new("L", (orig_w, orig_h), 0), (expand_left, expand_top))
-        return self.inpaint(expanded, mask, prompt, negative_prompt, steps, guidance, seed, callback)
+        return self.inpaint(expanded, mask, prompt, negative_prompt, steps, guidance, seed, sampler, scheduler, callback)

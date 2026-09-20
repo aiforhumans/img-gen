@@ -37,14 +37,34 @@ export const AdvancedSettingsDrawer: React.FC<AdvancedSettingsProps> = ({
   vramStrategy,
   setVRAMStrategy
 }) => {
-  const samplers = [
-    'Default (Recommended)',
-    'Euler Ancestral',
-    'Euler',
-    'DPM++ 2M Karras',
-    'FlowMatch Euler',
-    'DDIM'
-  ];
+  const getCompatibleSamplers = () => {
+    const m = selectedModel.toLowerCase();
+    if (m.includes('flux')) {
+      return ['Default (Recommended)', 'FlowMatch Euler'];
+    } else if (m.includes('zimage')) {
+      return ['Default (Recommended)', 'Euler'];
+    } else if (m.includes('sdxl')) {
+      return ['Default (Recommended)', 'Euler', 'Euler Ancestral', 'DPM++ 2M Karras', 'DDIM'];
+    } else if (m.includes('qwen')) {
+      return ['Default (Recommended)', 'DPM++ 2M Karras', 'Euler'];
+    }
+    return [
+      'Default (Recommended)',
+      'Euler Ancestral',
+      'Euler',
+      'DPM++ 2M Karras',
+      'FlowMatch Euler',
+      'DDIM'
+    ];
+  };
+
+  const samplers = getCompatibleSamplers();
+
+  React.useEffect(() => {
+    if (!samplers.includes(sampler)) {
+      setSampler('Default (Recommended)');
+    }
+  }, [selectedModel]);
 
   return (
     <div className="glass-panel" style={{ padding: '1rem', marginTop: '1rem' }}>

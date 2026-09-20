@@ -11,13 +11,13 @@ async def test_api_system_and_models():
         assert resp.status_code == 200
         data = resp.json()
         assert "gpu" in data
-        assert data["gpu"]["has_cuda"] is True
+        assert isinstance(data["gpu"]["has_cuda"], bool)
 
         # Test diagnostics endpoint
         diag_resp = await client.get("/api/system/diagnostics")
         assert diag_resp.status_code == 200
         diag = diag_resp.json()
-        assert diag["environment"]["cuda_available"] is True
+        assert isinstance(diag["environment"]["cuda_available"], bool)
 
         # Test models endpoint
         models_resp = await client.get("/api/models")

@@ -5,12 +5,12 @@ import { EditPage } from './pages/EditPage';
 import { GalleryPage } from './pages/GalleryPage';
 import { ModelsPage } from './pages/ModelsPage';
 import { LoRAPage } from './pages/LoRAPage';
-import { SettingsPage } from './pages/SettingsPage';
 import { SystemPage } from './pages/SystemPage';
-
+import { SettingsPage } from './pages/SettingsPage';
 import {
-  GenerationJob, ModelInfo, StylePreset, GenerationMode,
-  QualityLevel, AspectRatio, VRAMStrategy, SystemStatus, GalleryItem
+  GenerationJob, ModelInfo, GalleryItem, SystemStatus,
+  StylePreset, GenerationMode, QualityLevel, AspectRatio,
+  VRAMStrategy, LoRAInfo
 } from './types';
 import { api } from './services/api';
 
@@ -36,6 +36,9 @@ export const App: React.FC = () => {
   const [sampler, setSampler] = useState<string>('Default (Recommended)');
   const [vramStrategy, setVRAMStrategy] = useState<VRAMStrategy>('FULL_GPU');
 
+  // Active LoRAs for Generation
+  const [activeLoras, setActiveLoras] = useState<Array<{ id: string; name: string; path: string; weight: number }>>([]);
+
   // Server Data
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [styles, setStyles] = useState<StylePreset[]>([]);
@@ -44,7 +47,7 @@ export const App: React.FC = () => {
   // Job Queue & Live Generation State
   const [currentJob, setCurrentJob] = useState<GenerationJob | null>(null);
   const [lastCompletedJob, setLastCompletedJob] = useState<GenerationJob | null>(null);
-  const pollIntervalRef = useRef<number | null>(null);
+  const pollTimeoutRef = useRef<number | null>(null);
 
   // Edit Tab State
   const [editImageSrc, setEditImageSrc] = useState<string>('');
@@ -76,54 +79,76 @@ export const App: React.FC = () => {
       try {
         const sysData = await api.getSystemStatus();
         setSystemStatus(sysData);
-      } catch (e) {}
+      } catch {
+        // Ignore background polling network glitches
+      }
     }, 4000);
 
-    return () => clearInterval(sysInterval);
+    return () => {
+      clearInterval(sysInterval);
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+    };
   }, []);
 
-  // Job Execution & Polling
+  // Job Execution & Adaptive Polling (Phase 14 & 15)
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
+
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
 
     try {
       const res = await api.submitGeneration({
         prompt,
+        original_prompt: prompt,
         negative_prompt: negativePrompt,
         model: selectedModel,
         mode,
+        style: selectedStyle,
         aspect_ratio: aspectRatio,
         quality,
         width,
         height,
         steps,
         guidance,
-        seed
+        seed,
+        sampler,
+        vram_strategy: vramStrategy,
+        loras: activeLoras
       });
 
-      // Start rapid polling
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-
-      pollIntervalRef.current = window.setInterval(async () => {
+      // Adaptive polling function: 250ms for active generation, 600ms for preparation, stop on terminal state
+      const checkJob = async () => {
         try {
           const job = await api.getJob(res.job_id);
           setCurrentJob(job);
 
           if (job.state === 'complete') {
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
             setLastCompletedJob(job);
             setCurrentJob(null);
-          } else if (job.state === 'failed' || job.state === 'cancelled') {
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-            if (job.state === 'failed') {
-              alert(job.error_message || 'Generation failed.');
-            }
+            return;
+          } else if (job.state === 'cancelled') {
+            // Immediate clean reset on cancellation without alert (Phase 3)
             setCurrentJob(null);
+            return;
+          } else if (job.state === 'failed') {
+            alert(job.error_message || 'Generation failed.');
+            setCurrentJob(null);
+            return;
           }
+
+          // Schedule next poll adaptively
+          const intervalMs = (job.state === 'generating' || job.state === 'decoding' || job.state === 'saving') ? 250 : 600;
+          pollTimeoutRef.current = window.setTimeout(checkJob, intervalMs);
         } catch (err) {
           console.error('Job poll error:', err);
+          pollTimeoutRef.current = window.setTimeout(checkJob, 1000);
         }
-      }, 250);
+      };
+
+      pollTimeoutRef.current = window.setTimeout(checkJob, 250);
     } catch (err: any) {
       alert(err.message || 'Failed to submit generation');
     }
@@ -131,8 +156,15 @@ export const App: React.FC = () => {
 
   const handleCancel = async () => {
     if (currentJob) {
-      await api.cancelJob(currentJob.id);
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+      try {
+        await api.cancelJob(currentJob.id);
+      } catch (err) {
+        console.warn('Cancellation error:', err);
+      }
       setCurrentJob(null);
     }
   };
@@ -149,16 +181,67 @@ export const App: React.FC = () => {
     setActiveTab('edit');
   };
 
+  // Full Reuse Settings (Phase 2, 5, 14)
   const handleReuseSettings = (item: GalleryItem) => {
-    setPrompt(item.prompt);
+    setPrompt(item.original_prompt || item.prompt);
     setNegativePrompt(item.negative_prompt || '');
     if (item.model) setSelectedModel(item.model);
+    if (item.mode) setMode(item.mode);
+    if (item.style) setSelectedStyle(item.style);
+    if (item.aspect_ratio) setAspectRatio(item.aspect_ratio);
+    if (item.quality) setQuality(item.quality);
+    if (item.sampler) setSampler(item.sampler);
+    if (item.vram_strategy) setVRAMStrategy(item.vram_strategy as VRAMStrategy);
+    if (item.loras && Array.isArray(item.loras)) {
+      setActiveLoras(item.loras as any);
+    }
     setWidth(item.width);
     setHeight(item.height);
     setSteps(item.steps);
     setGuidance(item.guidance);
     setSeed(item.seed);
     setActiveTab('generate');
+  };
+
+  const handleReuseJob = (job: GenerationJob) => {
+    setPrompt(job.original_prompt || job.prompt);
+    setNegativePrompt(job.negative_prompt || '');
+    if (job.model) setSelectedModel(job.model);
+    if (job.mode) setMode(job.mode);
+    if (job.style) setSelectedStyle(job.style);
+    if (job.aspect_ratio) setAspectRatio(job.aspect_ratio as AspectRatio);
+    if (job.quality) setQuality(job.quality);
+    if (job.sampler) setSampler(job.sampler);
+    if (job.vram_strategy) setVRAMStrategy(job.vram_strategy as VRAMStrategy);
+    if (job.loras && Array.isArray(job.loras)) {
+      setActiveLoras(job.loras as any);
+    }
+    setWidth(job.width);
+    setHeight(job.height);
+    setSteps(job.steps);
+    setGuidance(job.guidance);
+    setSeed(job.seed);
+    setActiveTab('generate');
+  };
+
+  // LoRA Management callbacks
+  const handleToggleLoRA = (lora: LoRAInfo, weight: number) => {
+    setActiveLoras(prev => {
+      const exists = prev.some(l => l.id === lora.id || l.path === lora.path);
+      if (exists) {
+        return prev.filter(l => l.id !== lora.id && l.path !== lora.path);
+      } else {
+        return [...prev, { id: lora.id, name: lora.name, path: lora.path, weight }];
+      }
+    });
+  };
+
+  const handleUpdateLoRAWeight = (loraId: string, weight: number) => {
+    setActiveLoras(prev => prev.map(l => (l.id === loraId || l.path === loraId) ? { ...l, weight } : l));
+  };
+
+  const handleRemoveLoRA = (idOrPath: string) => {
+    setActiveLoras(prev => prev.filter(l => l.id !== idOrPath && l.path !== idOrPath));
   };
 
   return (
@@ -214,6 +297,9 @@ export const App: React.FC = () => {
             setSampler={setSampler}
             vramStrategy={vramStrategy}
             setVRAMStrategy={setVRAMStrategy}
+            activeLoras={activeLoras}
+            onRemoveLoRA={handleRemoveLoRA}
+            onReuseJob={handleReuseJob}
           />
         )}
 
@@ -242,7 +328,11 @@ export const App: React.FC = () => {
         )}
 
         {activeTab === 'loras' && (
-          <LoRAPage />
+          <LoRAPage
+            activeLoras={activeLoras}
+            onToggleLoRA={handleToggleLoRA}
+            onUpdateWeight={handleUpdateLoRAWeight}
+          />
         )}
 
         {activeTab === 'system' && (

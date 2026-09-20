@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cpu, CheckCircle2, AlertCircle, Info, Sparkles } from 'lucide-react';
+import { Cpu, CheckCircle2, Sparkles } from 'lucide-react';
 import { RoutingDecision } from '../types';
 
 interface GenerationAnalysisProps {

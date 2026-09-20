@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import {
   Paintbrush, Eraser, Undo, Redo, RotateCcw, ZoomIn, ZoomOut,
-  Sliders, ArrowRightLeft, Sparkles, Check
+  ArrowRightLeft
 } from 'lucide-react';
 
 interface InpaintCanvasProps {
@@ -23,7 +23,6 @@ export const InpaintCanvas: React.FC<InpaintCanvasProps> = ({
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
   const [history, setHistory] = useState<ImageData[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
-  const [imageLoaded, setImageLoaded] = useState<boolean>(false);
 
   // Load image onto background canvas
   useEffect(() => {
@@ -55,8 +54,6 @@ export const InpaintCanvas: React.FC<InpaintCanvasProps> = ({
         setHistory([initialData]);
         setHistoryIndex(0);
       }
-
-      setImageLoaded(true);
     };
   }, [imageSrc]);
 

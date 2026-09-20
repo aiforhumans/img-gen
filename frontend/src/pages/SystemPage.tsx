@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
-  Cpu, Activity, Zap, Trash2, FileText, Copy, Check, Download,
-  Layers, HardDrive, RefreshCw
+  Zap, Trash2, FileText, Copy, Check,
+  RefreshCw
 } from 'lucide-react';
 import { SystemStatus, VRAMStrategy } from '../types';
 import { api } from '../services/api';

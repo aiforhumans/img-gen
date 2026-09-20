@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Sparkles, Camera, Palette, Type, Edit3, Wand2, XCircle, ChevronDown, ChevronUp, Shuffle, Zap, RotateCcw
+  Sparkles, Camera, Palette, Type, Edit3, Wand2, XCircle, ChevronDown, ChevronUp, Shuffle, RotateCcw
 } from 'lucide-react';
 import { GenerationMode, StylePreset } from '../types';
 import { api } from '../services/api';

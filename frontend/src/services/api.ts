@@ -9,9 +9,11 @@ export const api = {
   // Generation & Queue
   async submitGeneration(params: {
     prompt: string;
+    original_prompt?: string;
     negative_prompt?: string;
     model?: string;
     mode?: string;
+    style?: string;
     aspect_ratio?: string;
     quality?: string;
     width?: number;
@@ -19,7 +21,19 @@ export const api = {
     steps?: number;
     guidance?: number;
     seed?: number;
-    loras?: Array<{ path: string; weight: number }>;
+    sampler?: string;
+    scheduler?: string;
+    vram_strategy?: string;
+    precision?: string;
+    loras?: Array<{ path: string; weight: number; id?: string }>;
+    edit_mode?: string;
+    init_image?: string;
+    mask_image?: string;
+    strength?: number;
+    expand_left?: number;
+    expand_right?: number;
+    expand_top?: number;
+    expand_bottom?: number;
   }): Promise<{ job_id: string; state: string }> {
     const res = await fetch(`${API_BASE}/api/generate`, {
       method: 'POST',

@@ -1,6 +1,11 @@
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Callable
 from PIL import Image
+
+def is_dev_simulation_mode() -> bool:
+    """Returns True if DEV_SIMULATION_MODE environment variable is set to true/1/yes."""
+    return os.environ.get("DEV_SIMULATION_MODE", "false").lower() in ["true", "1", "yes"]
 
 class BaseImageModelAdapter(ABC):
     """
@@ -41,6 +46,8 @@ class BaseImageModelAdapter(ABC):
         steps: int = 20,
         guidance: float = 7.0,
         seed: int = -1,
+        sampler: str = "Default (Recommended)",
+        scheduler: str = "Default",
         callback: Optional[Callable[[int, int, Optional[Image.Image]], None]] = None
     ) -> Image.Image:
         """Performs Text-to-Image synthesis with optional step preview callback."""
@@ -56,6 +63,8 @@ class BaseImageModelAdapter(ABC):
         steps: int = 20,
         guidance: float = 7.0,
         seed: int = -1,
+        sampler: str = "Default (Recommended)",
+        scheduler: str = "Default",
         callback: Optional[Callable[[int, int, Optional[Image.Image]], None]] = None
     ) -> Image.Image:
         """Performs Image-to-Image transformation."""
@@ -82,6 +91,8 @@ class BaseImageModelAdapter(ABC):
         steps: int = 20,
         guidance: float = 7.0,
         seed: int = -1,
+        sampler: str = "Default (Recommended)",
+        scheduler: str = "Default",
         callback: Optional[Callable[[int, int, Optional[Image.Image]], None]] = None
     ) -> Image.Image:
         """Performs localized inpainting on masked region."""
@@ -100,6 +111,8 @@ class BaseImageModelAdapter(ABC):
         steps: int = 20,
         guidance: float = 7.0,
         seed: int = -1,
+        sampler: str = "Default (Recommended)",
+        scheduler: str = "Default",
         callback: Optional[Callable[[int, int, Optional[Image.Image]], None]] = None
     ) -> Image.Image:
         """Performs canvas extension and seamless boundary blending."""
@@ -117,8 +130,13 @@ class BaseImageModelAdapter(ABC):
 
     @abstractmethod
     def unload_lora(self, lora_path: str) -> bool:
-        """Detaches a specific LoRA or all LoRAs."""
+        """Detaches a specific LoRA."""
         pass
+
+    def unload_all_loras(self) -> bool:
+        """Detaches all loaded LoRAs and clears state."""
+        self.loaded_loras.clear()
+        return True
 
     @abstractmethod
     def estimate_vram(self, width: int = 1024, height: int = 1024, batch_size: int = 1) -> float:

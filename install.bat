@@ -35,12 +35,20 @@ if not exist .venv (
     exit /b 1
 )
 
-echo [3/5] Installing Backend PyTorch with CUDA 13.0 for RTX 5080...
+echo [3/5] Installing Backend PyTorch (Blackwell / CUDA acceleration)...
 if exist .venv\Scripts\uv.exe (
-    .venv\Scripts\uv pip install --reinstall "torch==2.14.0+cu130" "torchvision==0.29.0+cu130" --index-url https://download.pytorch.org/whl/cu130
+    .venv\Scripts\uv pip install --index-url https://download.pytorch.org/whl/cu130 torch torchvision
+    if !ERRORLEVEL! neq 0 (
+        echo [INFO] Falling back to PyTorch CUDA 12.6...
+        .venv\Scripts\uv pip install --index-url https://download.pytorch.org/whl/cu126 torch torchvision
+    )
     .venv\Scripts\uv pip install -r backend\requirements.txt
 ) else (
-    .venv\Scripts\pip install "torch==2.14.0+cu130" "torchvision==0.29.0+cu130" --index-url https://download.pytorch.org/whl/cu130
+    .venv\Scripts\pip install --index-url https://download.pytorch.org/whl/cu130 torch torchvision
+    if !ERRORLEVEL! neq 0 (
+        echo [INFO] Falling back to PyTorch CUDA 12.6...
+        .venv\Scripts\pip install --index-url https://download.pytorch.org/whl/cu126 torch torchvision
+    )
     .venv\Scripts\pip install -r backend\requirements.txt
 )
 
@@ -56,9 +64,9 @@ if %ERRORLEVEL% equ 0 (
     echo [WARNING] npm not found in PATH. Install Node.js v20+ to compile the frontend.
 )
 
-echo [5/5] Running System Diagnostics...
+echo [5/5] Running System Preflight & Diagnostics...
 set PYTHONPATH=.
-.venv\Scripts\python scripts\test_system.py
+.venv\Scripts\python.exe scripts\preflight_check.py
 
 echo ======================================================================
 echo Installation complete! Run start.bat to launch the application.

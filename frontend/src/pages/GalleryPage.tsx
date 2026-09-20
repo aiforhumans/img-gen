@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Search, Heart, Trash2, Sliders, Sparkles, Download, Info,
-  Filter, Calendar, RefreshCw, X, ChevronRight
+  Search, Heart, Sliders, Trash2,
+  X, Download, Sparkles, RefreshCw
 } from 'lucide-react';
 import { GalleryItem } from '../types';
 import { api } from '../services/api';
@@ -23,7 +23,7 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({
   const [selectedItem, setSelectedItem] = useState<GalleryItem | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const fetchGallery = async () => {
+  const fetchGallery = useCallback(async () => {
     try {
       setIsLoading(true);
       const res = await api.getGallery({
@@ -38,11 +38,11 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [search, modelFilter, favoriteOnly]);
 
   useEffect(() => {
     fetchGallery();
-  }, [modelFilter, favoriteOnly]);
+  }, [fetchGallery]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,6 +124,10 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({
               <option value="sdxl">SDXL</option>
             </select>
           </div>
+
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+            {total} {total === 1 ? 'item' : 'items'}
+          </span>
 
           <button onClick={fetchGallery} className="btn btn-secondary" style={{ padding: '0.45rem 0.65rem' }} title="Refresh Gallery">
             <RefreshCw size={14} />

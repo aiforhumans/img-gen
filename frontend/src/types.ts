@@ -12,15 +12,21 @@ export interface JobMetrics {
   total_time: number;
   peak_vram_mb: number;
   images_per_minute: number;
+  oom_retries?: number;
+  effective_vram_strategy?: string;
 }
 
 export interface GenerationJob {
   id: string;
   created_at: string;
   prompt: string;
+  original_prompt?: string;
   negative_prompt: string;
+  enhanced_prompt?: string;
+  final_prompt?: string;
   model: string;
   mode: GenerationMode;
+  style?: string;
   aspect_ratio: string;
   quality: QualityLevel;
   width: number;
@@ -28,7 +34,10 @@ export interface GenerationJob {
   steps: number;
   guidance: number;
   seed: number;
-  loras: Array<{ path: string; weight: number }>;
+  sampler?: string;
+  scheduler?: string;
+  loras: Array<{ path: string; weight: number; id?: string }>;
+  vram_strategy?: string;
   state: 'waiting' | 'loading_model' | 'preparing' | 'generating' | 'decoding' | 'saving' | 'complete' | 'failed' | 'cancelled';
   progress: number;
   current_step: number;
@@ -39,7 +48,6 @@ export interface GenerationJob {
   metrics: JobMetrics;
   error_message?: string;
   routing_reason?: string;
-  enhanced_prompt?: string;
   vram_strategy_used: string;
 }
 
@@ -72,21 +80,29 @@ export interface GalleryItem {
   id: string;
   created_at: string;
   prompt: string;
-  enhanced_prompt: string;
-  negative_prompt: string;
+  original_prompt?: string;
+  enhanced_prompt?: string;
+  final_prompt?: string;
+  negative_prompt?: string;
   model: string;
-  model_version: string;
+  model_version?: string;
+  mode?: GenerationMode;
+  style?: string;
+  aspect_ratio?: AspectRatio;
+  quality?: QualityLevel;
   seed: number;
   steps: number;
   guidance: number;
-  sampler: string;
-  scheduler: string;
+  sampler?: string;
+  scheduler?: string;
+  loras?: Array<{ path: string; weight: number; id?: string }>;
   width: number;
   height: number;
   generation_time: number;
   peak_vram_mb: number;
   vram_strategy: string;
-  gpu_name: string;
+  oom_retries?: number;
+  gpu_name?: string;
   image_path: string;
   thumbnail_path: string;
   is_favorite: number;
@@ -152,4 +168,5 @@ export interface LoRAInfo {
   file_size_mb: number;
   default_strength: number;
   is_favorite: boolean;
+  is_active?: boolean;
 }

@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from backend.app.core.config import settings
 from backend.app.core.logger import app_logger
 
@@ -26,7 +26,7 @@ class LoRAScanner:
                     lora_info = self._parse_lora(file_path)
                     loras.append(lora_info)
 
-        # Include sample reference LoRAs for UI out-of-the-box demonstration
+        # Include sample reference LoRAs for UI out-of-the-box demonstration if folder is empty
         if not loras:
             loras = [
                 {
@@ -75,7 +75,7 @@ class LoRAScanner:
         f_lower = file_path.stem.lower()
         if "sdxl" in f_lower:
             arch = "sdxl"
-        elif "zimage" in f_lower or "portrait" in f_lower:
+        elif "zimage" in f_lower or "portrait" in f_lower or "lightning" in f_lower:
             arch = "zimage"
 
         return {
@@ -89,5 +89,55 @@ class LoRAScanner:
             "default_strength": 1.0,
             "is_favorite": False
         }
+
+    def get_lora_info(self, path_or_id: str) -> Optional[Dict[str, Any]]:
+        if not self.cached_loras:
+            self.scan_folders()
+        for l in self.cached_loras:
+            if l["id"] == path_or_id or l["path"] == path_or_id or l["filename"] == path_or_id:
+                return l
+        # Fallback to inference from path
+        p = Path(path_or_id)
+        if p.exists():
+            return self._parse_lora(p)
+        return None
+
+    def validate_compatibility(self, model_architecture: str, lora: Dict[str, Any]):
+        """
+        Validates whether a LoRA can be applied to the target model architecture.
+        Raises ValueError if incompatible.
+        """
+        target_arch = model_architecture.lower()
+        if target_arch == "qwen":
+            raise ValueError("Qwen architecture does not support LoRA adaptation.")
+
+        lora_path = lora.get("path") or lora.get("id") or ""
+        info = self.get_lora_info(lora_path)
+        lora_arch = (info.get("base_architecture") if info else "unknown").lower()
+
+        # Inferred architecture from path if not in info
+        if lora_arch == "unknown":
+            p_lower = str(lora_path).lower()
+            if "flux" in p_lower:
+                lora_arch = "flux"
+            elif "sdxl" in p_lower:
+                lora_arch = "sdxl"
+            elif "zimage" in p_lower:
+                lora_arch = "zimage"
+
+        # Compatibility rules:
+        # SDXL supports SDXL and zimage LoRAs
+        # Z-Image supports zimage and SDXL LoRAs
+        # FLUX supports only FLUX LoRAs
+        if target_arch in ["sdxl", "zimage"]:
+            if lora_arch not in ["sdxl", "zimage", "unknown"]:
+                raise ValueError(
+                    f"LoRA '{lora_path}' ({lora_arch.upper()}) is incompatible with {target_arch.upper()} model backend."
+                )
+        elif target_arch == "flux":
+            if lora_arch not in ["flux", "unknown"]:
+                raise ValueError(
+                    f"LoRA '{lora_path}' ({lora_arch.upper()}) is incompatible with FLUX model backend."
+                )
 
 lora_scanner = LoRAScanner()

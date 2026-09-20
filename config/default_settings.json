@@ -7,10 +7,10 @@
     "theme": "dark"
   },
   "paths": {
-    "model_dirs": ["F:\\img-gen\\models", "C:\\Users\\markd\\.cache\\huggingface\\hub"],
-    "lora_dirs": ["F:\\img-gen\\models\\loras"],
-    "output_dir": "F:\\img-gen\\outputs",
-    "cache_dir": "F:\\img-gen\\cache"
+    "model_dirs": ["models"],
+    "lora_dirs": ["models/loras"],
+    "output_dir": "outputs",
+    "cache_dir": "cache"
   },
   "generation": {
     "default_model": "auto",

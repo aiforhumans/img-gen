@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  HardDrive, Zap, CheckCircle2, Play, Square, ShieldCheck, Download,
-  Trash2, RefreshCw, AlertCircle, Check
+  CheckCircle2, Play, Square, ShieldCheck, Download,
+  Trash2, RefreshCw, Check
 } from 'lucide-react';
 import { ModelInfo, VRAMStrategy } from '../types';
 import { api } from '../services/api';
@@ -24,7 +24,7 @@ interface DownloadStatus {
 
 export const ModelsPage: React.FC<ModelsPageProps> = ({
   models,
-  activeModelId,
+  activeModelId: _activeModelId,
   onRefreshModels,
   vramStrategy
 }) => {
@@ -38,7 +38,9 @@ export const ModelsPage: React.FC<ModelsPageProps> = ({
       try {
         const s = await api.getDownloadStatus(m.id);
         statuses[m.id] = s;
-      } catch (e) {}
+      } catch {
+        // Status not available yet
+      }
     }
     setDownloadStatuses(statuses);
   };
