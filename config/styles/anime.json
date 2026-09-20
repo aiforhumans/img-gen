@@ -1,0 +1,9 @@
+{
+  "id": "anime",
+  "name": "Anime & Manga",
+  "category": "Art",
+  "prompt_template": "{prompt}, modern anime artwork, makoto shinkai aesthetic, vibrant colors, detailed cel shading, clean lineart, luminous atmospheric lighting",
+  "negative_prompt": "photorealistic, 3d render, western comic, lowres, grainy",
+  "recommended_aspect_ratio": "16:9",
+  "recommended_model": "flux-klein-4b"
+}

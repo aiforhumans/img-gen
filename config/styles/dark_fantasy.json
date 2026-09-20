@@ -1,0 +1,9 @@
+{
+  "id": "dark_fantasy",
+  "name": "Dark Fantasy",
+  "category": "Fantasy",
+  "prompt_template": "{prompt}, dark fantasy grim atmosphere, elden ring style, gothic architecture, haunting fog, muted color tones, ethereal rim light, sinister mystery",
+  "negative_prompt": "cheerful, bright cartoon, saturated rainbow, cute",
+  "recommended_aspect_ratio": "16:9",
+  "recommended_model": "flux-klein-9b"
+}

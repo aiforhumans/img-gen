@@ -1,0 +1,9 @@
+{
+  "id": "concept_art",
+  "name": "Concept Art",
+  "category": "Art",
+  "prompt_template": "{prompt}, epic video game concept art, sprawling world building, matte painting, immense scale, moody atmospheric haze, intricate environment details",
+  "negative_prompt": "simple, cartoon, flat, bad perspective, watermark",
+  "recommended_aspect_ratio": "21:9",
+  "recommended_model": "flux-klein-9b"
+}

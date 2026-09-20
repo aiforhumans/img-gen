@@ -1,0 +1,9 @@
+{
+  "id": "architecture",
+  "name": "Architecture & Interiors",
+  "category": "Architecture",
+  "prompt_template": "{prompt}, architectural photography, archdaily feature, architectural digest interior, golden hour natural light, perfectly aligned vertical lines, modern minimalism",
+  "negative_prompt": "crooked angles, cluttered, fisheye, distorted walls",
+  "recommended_aspect_ratio": "16:9",
+  "recommended_model": "flux-klein-4b"
+}

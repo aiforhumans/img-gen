@@ -1,0 +1,38 @@
+{
+  "general": {
+    "app_name": "Antigravity Diffusion Studio",
+    "version": "1.0.0",
+    "host": "127.0.0.1",
+    "port": 7860,
+    "theme": "dark"
+  },
+  "paths": {
+    "model_dirs": ["F:\\img-gen\\models", "C:\\Users\\markd\\.cache\\huggingface\\hub"],
+    "lora_dirs": ["F:\\img-gen\\models\\loras"],
+    "output_dir": "F:\\img-gen\\outputs",
+    "cache_dir": "F:\\img-gen\\cache"
+  },
+  "generation": {
+    "default_model": "auto",
+    "default_aspect_ratio": "1:1",
+    "default_quality": "balanced",
+    "default_mode": "auto",
+    "live_preview": true,
+    "preview_frequency": 2,
+    "low_res_preview": true,
+    "save_metadata_to_png": true
+  },
+  "vram": {
+    "default_strategy": "FULL_GPU",
+    "auto_unload_inactive": true,
+    "max_loaded_models": 1,
+    "target_gpu_vram_gb": 16,
+    "oom_retry_enabled": true
+  },
+  "lm_studio": {
+    "enabled": true,
+    "base_url": "http://127.0.0.1:1234/v1",
+    "timeout_seconds": 15,
+    "preferred_model": "auto"
+  }
+}

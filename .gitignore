@@ -1,0 +1,77 @@
+# ==============================================================================
+# ANTIGRAVITY DIFFUSION STUDIO - GITIGNORE
+# ==============================================================================
+
+# Python Virtual Environments & Packages
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Byte-compiled / optimized / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node.js & Frontend Build Outputs
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Large Model Weights, Checkpoints & Safetensors (DO NOT COMMIT MULTI-GB FILES)
+models/*
+!models/.gitkeep
+!models/loras/
+models/loras/*
+!models/loras/.gitkeep
+*.safetensors
+*.bin
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.gguf
+
+# Generated Outputs & Local Database
+outputs/*
+!outputs/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache, Scratch & Logs
+cache/*
+!cache/.gitkeep
+scratch/*
+logs/*
+!logs/.gitkeep
+*.log
+
+# Sensitive Tokens, API Keys & Local Overrides
+config/hf_token.txt
+config/user_settings.json
+*.env
+*.env.local
+*.env.*.local
+
+# Operating System & IDE Artifacts
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo

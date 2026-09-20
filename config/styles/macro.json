@@ -1,0 +1,9 @@
+{
+  "id": "macro",
+  "name": "Macro Photography",
+  "category": "Photography",
+  "prompt_template": "{prompt}, extreme macro photography, 100mm f/2.8 lens, microscopic details, crystalline clarity, razor sharp focal plane, creamy bokeh background",
+  "negative_prompt": "wide shot, low resolution, flat, out of focus",
+  "recommended_aspect_ratio": "1:1",
+  "recommended_model": "zimage-turbo"
+}

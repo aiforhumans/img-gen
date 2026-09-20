@@ -1,0 +1,10 @@
+{
+  "id": "photorealistic",
+  "name": "Photorealistic",
+  "category": "Photography",
+  "prompt_template": "{prompt}, ultra-realistic, highly detailed skin texture, 8k uhd, dslr quality, soft natural lighting, high dynamic range",
+  "negative_prompt": "deformed, distorted, disfigured, doll, plastic, cartoon, render, 3d, oversaturated, blurry",
+  "recommended_aspect_ratio": "3:4",
+  "recommended_model": "zimage-turbo",
+  "default": true
+}

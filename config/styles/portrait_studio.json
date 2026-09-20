@@ -1,0 +1,9 @@
+{
+  "id": "portrait_studio",
+  "name": "Portrait Studio",
+  "category": "Photography",
+  "prompt_template": "{prompt}, studio headshot portrait, rembrandt lighting, catching light in eyes, 85mm portrait lens, smooth skin texture, professional color grading",
+  "negative_prompt": "bad eyes, extra fingers, cartoon, plastic, over-smoothed",
+  "recommended_aspect_ratio": "3:4",
+  "recommended_model": "zimage-turbo"
+}

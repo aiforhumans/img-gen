@@ -1,0 +1,9 @@
+{
+  "id": "analog_film",
+  "name": "Analog Film",
+  "category": "Photography",
+  "prompt_template": "{prompt}, vintage 35mm film photograph, kodak portra 400, warm film grain, subtle light leaks, retro tones, candid mood, timeless aesthetic",
+  "negative_prompt": "digital crisp, sterile, 3d render, oversaturated, plastic skin",
+  "recommended_aspect_ratio": "3:2",
+  "recommended_model": "sdxl"
+}

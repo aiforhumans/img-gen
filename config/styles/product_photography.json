@@ -1,0 +1,9 @@
+{
+  "id": "product_photography",
+  "name": "Product Photography",
+  "category": "Commercial",
+  "prompt_template": "{prompt}, commercial product photography, minimalist studio setup, clean softbox reflections, pristine details, premium catalog quality, neutral gradient background",
+  "negative_prompt": "messy, dirty, noisy, blurry, distorted text, cheap",
+  "recommended_aspect_ratio": "1:1",
+  "recommended_model": "qwen-image"
+}

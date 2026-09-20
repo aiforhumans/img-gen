@@ -1,0 +1,9 @@
+{
+  "id": "cyberpunk",
+  "name": "Cyberpunk",
+  "category": "Sci-Fi",
+  "prompt_template": "{prompt}, cyberpunk city aesthetic, neon glowing highlights, rain-slicked asphalt, holographic interfaces, futuristic architecture, moody twilight",
+  "negative_prompt": "sunny pastoral, historic, fantasy, low contrast",
+  "recommended_aspect_ratio": "16:9",
+  "recommended_model": "flux-klein-4b"
+}

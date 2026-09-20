@@ -1,0 +1,9 @@
+{
+  "id": "cinematic",
+  "name": "Cinematic",
+  "category": "Film",
+  "prompt_template": "{prompt}, cinematic film still, 35mm photograph, anamorphic lens, dramatic lighting, volumetric atmosphere, shallow depth of field, color graded",
+  "negative_prompt": "cheap video, amateur, overexposed, cartoon, flat lighting, watermark",
+  "recommended_aspect_ratio": "16:9",
+  "recommended_model": "flux-klein-4b"
+}

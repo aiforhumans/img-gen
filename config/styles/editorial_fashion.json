@@ -1,0 +1,9 @@
+{
+  "id": "editorial_fashion",
+  "name": "Editorial Fashion",
+  "category": "Fashion",
+  "prompt_template": "{prompt}, high fashion magazine editorial, vogue aesthetic, studio backdrop, dynamic pose, sharp focus, professional fashion photography, elegant styling",
+  "negative_prompt": "casual snap, low quality, bad anatomy, blurry, artifacts",
+  "recommended_aspect_ratio": "3:4",
+  "recommended_model": "zimage-turbo"
+}

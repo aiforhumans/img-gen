@@ -1,0 +1,9 @@
+{
+  "id": "illustration",
+  "name": "Digital Illustration",
+  "category": "Art",
+  "prompt_template": "{prompt}, expressive digital painting, painterly brush strokes, rich color palette, evocative composition, award winning artstation masterpiece",
+  "negative_prompt": "photo, amateur sketch, muddy colors, harsh geometry",
+  "recommended_aspect_ratio": "1:1",
+  "recommended_model": "flux-klein-4b"
+}
