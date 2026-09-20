@@ -10,9 +10,9 @@ interface ImagePreviewProps {
   currentJob: GenerationJob | null;
   lastCompletedJob: GenerationJob | null;
   onVary: (job: GenerationJob) => void;
-  onEdit: (imageUrl: string, prompt: string) => void;
-  onInpaint: (imageUrl: string, prompt: string) => void;
-  onOutpaint: (imageUrl: string, prompt: string) => void;
+  onEdit?: (imageUrl: string, prompt: string) => void;
+  onInpaint?: (imageUrl: string, prompt: string) => void;
+  onOutpaint?: (imageUrl: string, prompt: string) => void;
   onReusePrompt: (prompt: string, negPrompt: string) => void;
   onReuseSettings?: (job: GenerationJob) => void;
   onDelete: (id: string) => void;
@@ -241,35 +241,41 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               <span>Vary</span>
             </button>
 
-            <button
-              onClick={() => onEdit(imageSrc!, displayJob.prompt)}
-              className="btn btn-secondary"
-              style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
-              title="Send to Editor"
-            >
-              <Sliders size={14} />
-              <span>Edit</span>
-            </button>
+            {onEdit && (
+              <button
+                onClick={() => onEdit(imageSrc!, displayJob.prompt)}
+                className="btn btn-secondary"
+                style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                title="Send to Editor"
+              >
+                <Sliders size={14} />
+                <span>Edit</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => onInpaint(imageSrc!, displayJob.prompt)}
-              className="btn btn-secondary"
-              style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
-              title="Paint and modify a mask region"
-            >
-              <Brush size={14} />
-              <span>Inpaint</span>
-            </button>
+            {onInpaint && (
+              <button
+                onClick={() => onInpaint(imageSrc!, displayJob.prompt)}
+                className="btn btn-secondary"
+                style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                title="Paint and modify a mask region"
+              >
+                <Brush size={14} />
+                <span>Inpaint</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => onOutpaint(imageSrc!, displayJob.prompt)}
-              className="btn btn-secondary"
-              style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
-              title="Extend canvas in any direction"
-            >
-              <Maximize2 size={14} />
-              <span>Outpaint</span>
-            </button>
+            {onOutpaint && (
+              <button
+                onClick={() => onOutpaint(imageSrc!, displayJob.prompt)}
+                className="btn btn-secondary"
+                style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                title="Extend canvas in any direction"
+              >
+                <Maximize2 size={14} />
+                <span>Outpaint</span>
+              </button>
+            )}
 
             <button
               onClick={() => {

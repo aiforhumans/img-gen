@@ -212,21 +212,14 @@ class JobQueue:
         if job.aspect_ratio == "auto" and style_comp.recommended_aspect_ratio:
             job.aspect_ratio = style_comp.recommended_aspect_ratio
 
-        if job.model == "auto":
-            decision = auto_router.analyze(styled_prompt, user_mode=job.mode)
-            target_model_id = decision.model
-            job.routing_reason = decision.reason
-            if job.aspect_ratio == "auto" or job.aspect_ratio == "1:1":
-                job.width = decision.width
-                job.height = decision.height
-                job.aspect_ratio = decision.aspect_ratio
-            if job.steps == 20:
-                job.steps = decision.steps
-            if job.guidance == 7.0:
-                job.guidance = decision.guidance
-        else:
-            target_model_id = job.model
-            job.routing_reason = f"Manual override to model '{job.model}'."
+        # Hard-bind to Turbo Photorealism (Juggernaut-XL)
+        target_model_id = "zimage-turbo"
+        job.model = "zimage-turbo"
+        job.routing_reason = "Dedicated Turbo Photorealism pipeline (Juggernaut-XL SDXL-Lightning)."
+        if job.steps == 20 or job.steps <= 0:
+            job.steps = 8
+        if job.guidance == 7.0 or job.guidance <= 0.0:
+            job.guidance = 1.5
 
         # Prompt Intelligence / expansion
         if settings.lm_studio.enabled:

@@ -1,57 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { PromptBar } from '../components/PromptBar';
 import { AspectPicker } from '../components/AspectPicker';
-import { QualityPicker } from '../components/QualityPicker';
-import { AdvancedSettingsDrawer } from '../components/AdvancedSettingsDrawer';
-import { GenerationAnalysisDrawer } from '../components/GenerationAnalysisDrawer';
 import { ImagePreview } from '../components/ImagePreview';
 import {
-  GenerationJob, ModelInfo, StylePreset, GenerationMode,
-  QualityLevel, AspectRatio, VRAMStrategy, RoutingDecision
+  GenerationJob, StylePreset, AspectRatio, VRAMStrategy
 } from '../types';
-import { api } from '../services/api';
+import { Sliders, Shuffle } from 'lucide-react';
 
 interface GeneratePageProps {
   prompt: string;
   setPrompt: (p: string) => void;
   negativePrompt: string;
   setNegativePrompt: (np: string) => void;
-  mode: GenerationMode;
-  setMode: (m: GenerationMode) => void;
   selectedStyle: string;
   setSelectedStyle: (s: string) => void;
   styles: StylePreset[];
-  models: ModelInfo[];
   currentJob: GenerationJob | null;
   lastCompletedJob: GenerationJob | null;
   onGenerate: () => void;
   onCancel: () => void;
-  onSendToEdit: (imageSrc: string, prompt: string) => void;
-  onSendToInpaint: (imageSrc: string, prompt: string) => void;
-  onSendToOutpaint: (imageSrc: string, prompt: string) => void;
   onDeleteJob: (id: string) => void;
-  selectedModel: string;
-  setSelectedModel: (m: string) => void;
   aspectRatio: AspectRatio;
   setAspectRatio: (ar: AspectRatio) => void;
   width: number;
   setWidth: (w: number) => void;
   height: number;
   setHeight: (h: number) => void;
-  quality: QualityLevel;
-  setQuality: (q: QualityLevel) => void;
   steps: number;
   setSteps: (s: number) => void;
   guidance: number;
   setGuidance: (g: number) => void;
   seed: number;
   setSeed: (s: number) => void;
-  sampler: string;
-  setSampler: (s: string) => void;
   vramStrategy: VRAMStrategy;
   setVRAMStrategy: (s: VRAMStrategy) => void;
-  activeLoras?: Array<{ id?: string; name?: string; path: string; weight: number }>;
-  onRemoveLoRA?: (idOrPath: string) => void;
   onReuseJob?: (job: GenerationJob) => void;
 }
 
@@ -60,69 +42,33 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
   setPrompt,
   negativePrompt,
   setNegativePrompt,
-  mode,
-  setMode,
   selectedStyle,
   setSelectedStyle,
   styles,
-  models,
   currentJob,
   lastCompletedJob,
   onGenerate,
   onCancel,
-  onSendToEdit,
-  onSendToInpaint,
-  onSendToOutpaint,
   onDeleteJob,
-  selectedModel,
-  setSelectedModel,
   aspectRatio,
   setAspectRatio,
   width,
   setWidth,
   height,
   setHeight,
-  quality,
-  setQuality,
   steps,
   setSteps,
   guidance,
   setGuidance,
   seed,
   setSeed,
-  sampler,
-  setSampler,
   vramStrategy,
   setVRAMStrategy,
-  activeLoras = [],
-  onRemoveLoRA,
   onReuseJob
 }) => {
-  const [isAdvOpen, setIsAdvOpen] = useState(false);
-  const [analysisDecision, setAnalysisDecision] = useState<RoutingDecision | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showFineTune, setShowFineTune] = useState(false);
 
   const isGenerating = currentJob?.state === 'generating' || currentJob?.state === 'loading_model' || currentJob?.state === 'preparing';
-
-  // Debounced Auto Engine analysis
-  useEffect(() => {
-    if (!prompt.trim() || mode !== 'auto') {
-      setAnalysisDecision(null);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      try {
-        setIsAnalyzing(true);
-        const res = await api.analyzePrompt(prompt, mode);
-        setAnalysisDecision(res);
-      } catch (err) {
-        console.error('Prompt analysis error:', err);
-      } finally {
-        setIsAnalyzing(false);
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [prompt, mode]);
 
   const handleVary = (job: GenerationJob) => {
     setPrompt(job.prompt);
@@ -144,8 +90,6 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
           setPrompt={setPrompt}
           negativePrompt={negativePrompt}
           setNegativePrompt={setNegativePrompt}
-          mode={mode}
-          setMode={setMode}
           selectedStyle={selectedStyle}
           setSelectedStyle={setSelectedStyle}
           styles={styles}
@@ -158,8 +102,8 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
           setSteps={setSteps}
         />
 
-        {/* Aspect Ratio & Quality Grid */}
-        <div className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        {/* Aspect Ratio Picker Panel */}
+        <div className="glass-panel" style={{ padding: '1.25rem' }}>
           <AspectPicker
             aspectRatio={aspectRatio}
             setAspectRatio={setAspectRatio}
@@ -168,75 +112,115 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
             setWidth={setWidth}
             setHeight={setHeight}
           />
-          <QualityPicker
-            quality={quality}
-            setQuality={setQuality}
-            setSteps={setSteps}
-          />
         </div>
 
-        {/* Auto Engine Generation Analysis Breakdown */}
-        {mode === 'auto' && (
-          <GenerationAnalysisDrawer
-            decision={analysisDecision}
-            isLoading={isAnalyzing}
-          />
-        )}
-
-        {/* Active LoRA Chips */}
-        {activeLoras.length > 0 && (
-          <div className="glass-panel" style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Active LoRAs:</span>
-            {activeLoras.map((l) => (
-              <span
-                key={l.id || l.path}
-                className="badge badge-indigo"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
-              >
-                <span>{l.name || l.id} ({l.weight.toFixed(2)})</span>
-                {onRemoveLoRA && (
-                  <button
-                    onClick={() => onRemoveLoRA(l.id || l.path)}
-                    style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: '0.9rem', lineHeight: 1 }}
-                    title="Remove LoRA from active generation"
-                  >
-                    ×
-                  </button>
-                )}
-              </span>
-            ))}
+        {/* Minimal Collapsible Fine-Tune Settings Toggle */}
+        <div className="glass-panel" style={{ padding: '1rem 1.25rem' }}>
+          <div
+            onClick={() => setShowFineTune(!showFineTune)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              userSelect: 'none'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Sliders size={16} color="var(--primary)" />
+              <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Fine-Tune Parameters</span>
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              {showFineTune ? 'Hide' : 'Seed, Guidance & VRAM'}
+            </span>
           </div>
-        )}
 
-        {/* Advanced Model & Generation Controls Drawer */}
-        <AdvancedSettingsDrawer
-          isOpen={isAdvOpen}
-          setIsOpen={setIsAdvOpen}
-          models={models}
-          selectedModel={selectedModel}
-          setSelectedModel={setSelectedModel}
-          steps={steps}
-          setSteps={setSteps}
-          guidance={guidance}
-          setGuidance={setGuidance}
-          seed={seed}
-          setSeed={setSeed}
-          sampler={sampler}
-          setSampler={setSampler}
-          vramStrategy={vramStrategy}
-          setVRAMStrategy={setVRAMStrategy}
-        />
+          {showFineTune && (
+            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', animation: 'fadeIn 0.2s ease' }}>
+              {/* Seed Control */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                    Seed (-1 = Random):
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setSeed(-1)}
+                    className="btn btn-secondary"
+                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    <Shuffle size={12} />
+                    <span>Randomize</span>
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  className="input-text"
+                  style={{ width: '100%' }}
+                  value={seed}
+                  onChange={(e) => setSeed(parseInt(e.target.value) || -1)}
+                />
+              </div>
+
+              {/* Guidance / CFG */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                    Guidance Scale (CFG):
+                  </label>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 700 }}>
+                    {guidance.toFixed(1)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={1.0}
+                  max={4.0}
+                  step={0.1}
+                  value={guidance}
+                  onChange={(e) => setGuidance(parseFloat(e.target.value))}
+                  style={{ width: '100%' }}
+                />
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                  Optimal for Juggernaut-XL Lightning: 1.5 - 2.0
+                </div>
+              </div>
+
+              {/* VRAM Strategy Selector */}
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+                  Hardware Memory Strategy:
+                </label>
+                <div className="pill-group" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4 }}>
+                  {[
+                    { id: 'FULL_GPU', label: 'Full GPU (Fastest)' },
+                    { id: 'BALANCED', label: 'Balanced' },
+                    { id: 'LOW_VRAM', label: 'Low VRAM' },
+                    { id: 'CPU_OFFLOAD', label: 'CPU Offload' }
+                  ].map((strat) => (
+                    <button
+                      key={strat.id}
+                      type="button"
+                      className={`pill-btn ${vramStrategy === strat.id ? 'active' : ''}`}
+                      onClick={() => setVRAMStrategy(strat.id as VRAMStrategy)}
+                      style={{ fontSize: '0.75rem', padding: '0.35rem' }}
+                    >
+                      {strat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Right Column: Large Image Preview & Telemetry Toolbar */}
+      {/* Right Column: Image Preview & Generation Telemetry */}
       <div>
         <ImagePreview
           currentJob={currentJob}
           lastCompletedJob={lastCompletedJob}
           onVary={handleVary}
-          onEdit={(src, p) => onSendToEdit(src, p)}
-          onInpaint={(src, p) => onSendToInpaint(src, p)}
-          onOutpaint={(src, p) => onSendToOutpaint(src, p)}
           onReusePrompt={handleReusePrompt}
           onReuseSettings={onReuseJob}
           onDelete={onDeleteJob}

@@ -8,7 +8,7 @@ import { api } from '../services/api';
 
 interface GalleryPageProps {
   onReuseSettings: (item: GalleryItem) => void;
-  onSendToEditor: (imageSrc: string, prompt: string) => void;
+  onSendToEditor?: (imageSrc: string, prompt: string) => void;
 }
 
 export const GalleryPage: React.FC<GalleryPageProps> = ({
@@ -359,17 +359,19 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({
                 </button>
 
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    onClick={() => {
-                      onSendToEditor(api.getImageUrl(selectedItem.id), selectedItem.prompt);
-                      setSelectedItem(null);
-                    }}
-                    className="btn btn-secondary"
-                    style={{ flex: 1, fontSize: '0.8rem' }}
-                  >
-                    <Sliders size={14} />
-                    <span>Send to Editor</span>
-                  </button>
+                  {onSendToEditor && (
+                    <button
+                      onClick={() => {
+                        onSendToEditor(api.getImageUrl(selectedItem.id), selectedItem.prompt);
+                        setSelectedItem(null);
+                      }}
+                      className="btn btn-secondary"
+                      style={{ flex: 1, fontSize: '0.8rem' }}
+                    >
+                      <Sliders size={14} />
+                      <span>Send to Editor</span>
+                    </button>
+                  )}
 
                   <a
                     href={api.getImageUrl(selectedItem.id)}

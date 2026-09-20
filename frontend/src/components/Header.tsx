@@ -1,7 +1,7 @@
 import React from 'react';
 import {
-  Sparkles, Sliders, Image as ImageIcon, Cpu, Layers, Settings,
-  Activity, Zap, HardDrive, RefreshCw
+  Sparkles, Image as ImageIcon,
+  Activity, Zap, RefreshCw
 } from 'lucide-react';
 import { SystemStatus } from '../types';
 import { api } from '../services/api';
@@ -18,17 +18,12 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   systemStatus,
-  activeModel,
+  activeModel: _activeModel,
   isGenerating
 }) => {
   const tabs = [
     { id: 'generate', label: 'Generate', icon: Sparkles },
-    { id: 'edit', label: 'Edit & Inpaint', icon: Sliders },
     { id: 'gallery', label: 'Gallery', icon: ImageIcon },
-    { id: 'models', label: 'Models', icon: HardDrive },
-    { id: 'loras', label: 'LoRAs', icon: Layers },
-    { id: 'system', label: 'System', icon: Cpu },
-    { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   const gpu = systemStatus?.gpu;
@@ -94,12 +89,10 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Active Model Indicator */}
-          {activeModel && (
-            <div className="badge badge-indigo" style={{ padding: '0.25rem 0.65rem' }}>
-              <Zap size={13} />
-              <span>{activeModel.toUpperCase()}</span>
-            </div>
-          )}
+          <div className="badge badge-indigo" style={{ padding: '0.25rem 0.65rem' }}>
+            <Zap size={13} />
+            <span>TURBO PHOTOREALISM (JUGGERNAUT-XL)</span>
+          </div>
         </div>
 
         {/* Navigation Tabs */}
@@ -141,14 +134,12 @@ export const Header: React.FC<HeaderProps> = ({
             }}
           >
             <div
-              onClick={() => setActiveTab('system')}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.65rem',
-                cursor: 'pointer'
+                gap: '0.65rem'
               }}
-              title="Click to view full System Monitor"
+              title={`GPU VRAM: ${vramAlloc} / ${vramTotal} MB (${vramPercent}%)`}
             >
               <div style={{
                 width: 8,
