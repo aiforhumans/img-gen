@@ -80,6 +80,14 @@ class GenerationJob(BaseModel):
     expand_top: int = 0
     expand_bottom: int = 0
 
+    # IP-Adapter reference image fields
+    reference_image_path: Optional[str] = None
+    reference_mode: Optional[str] = None
+    reference_strength: float = 0.6
+    reference_image_path_2: Optional[str] = None
+    reference_mode_2: Optional[str] = None
+    reference_strength_2: float = 0.6
+
     state: JobState = JobState.WAITING
     progress: float = 0.0
     current_step: int = 0
@@ -300,6 +308,14 @@ class JobQueue:
 
                 loop = asyncio.get_running_loop()
 
+                # Load reference images for IP-Adapter if specified
+                reference_image = None
+                reference_image_2 = None
+                if job.reference_image_path:
+                    reference_image = self._load_image_payload(job.reference_image_path)
+                if job.reference_image_path_2:
+                    reference_image_2 = self._load_image_payload(job.reference_image_path_2)
+
                 def run_inference():
                     if job.edit_mode == "inpaint" and source_image and mask_image:
                         return adapter.inpaint(
@@ -361,7 +377,13 @@ class JobQueue:
                             seed=job.seed,
                             sampler=job.sampler,
                             scheduler=job.scheduler,
-                            callback=step_callback
+                            callback=step_callback,
+                            reference_image=reference_image,
+                            reference_mode=job.reference_mode,
+                            reference_strength=job.reference_strength,
+                            reference_image_2=reference_image_2,
+                            reference_mode_2=job.reference_mode_2,
+                            reference_strength_2=job.reference_strength_2
                         )
 
                 final_image = await loop.run_in_executor(None, run_inference)
@@ -439,7 +461,11 @@ class JobQueue:
             "vram_strategy": job.vram_strategy_used,
             "oom_retries": job.metrics.oom_retries,
             "gpu_name": gpu_info.get("gpu_name", ""),
-            "app_version": settings.general.version
+            "app_version": settings.general.version,
+            "reference_mode": job.reference_mode,
+            "reference_strength": job.reference_strength,
+            "reference_mode_2": job.reference_mode_2,
+            "reference_strength_2": job.reference_strength_2
         }
 
         # Embed PNG info

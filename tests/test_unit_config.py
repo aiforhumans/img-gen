@@ -36,6 +36,44 @@ def test_generation_config_valid():
     assert len(cfg.loras) == 1
     assert cfg.loras[0].weight == 0.8
 
+def test_generation_config_reference_image_fields():
+    """Validates IP-Adapter reference image configuration fields."""
+    # Valid reference config
+    cfg = GenerationConfig(
+        prompt="portrait photo",
+        reference_image_path="/cache/references/abc123.png",
+        reference_mode="style",
+        reference_strength=0.8
+    )
+    assert cfg.reference_image_path == "/cache/references/abc123.png"
+    assert cfg.reference_mode == "style"
+    assert cfg.reference_strength == 0.8
+
+    # Dual reference
+    cfg2 = GenerationConfig(
+        prompt="portrait photo",
+        reference_image_path="/cache/ref1.png",
+        reference_mode="style",
+        reference_strength=0.6,
+        reference_image_path_2="/cache/ref2.png",
+        reference_mode_2="subject",
+        reference_strength_2=0.4
+    )
+    assert cfg2.reference_mode_2 == "subject"
+    assert cfg2.reference_strength_2 == 0.4
+
+    # Defaults when no reference
+    cfg3 = GenerationConfig(prompt="simple test")
+    assert cfg3.reference_image_path is None
+    assert cfg3.reference_mode is None
+    assert cfg3.reference_strength == 0.6
+
+    # Strength out of range
+    with pytest.raises(ValidationError):
+        GenerationConfig(prompt="test", reference_strength=2.0)
+    with pytest.raises(ValidationError):
+        GenerationConfig(prompt="test", reference_strength=-0.5)
+
 def test_generation_config_dimension_quantization():
     # Width and height not multiples of 8 should be snapped
     cfg = GenerationConfig(prompt="test", width=1023, height=769)
@@ -112,7 +150,64 @@ def test_scheduler_factory_architecture_compatibility():
     # Z-Image supports Euler and Default
     assert SchedulerFactory.is_compatible("zimage", "Euler") is True
     assert SchedulerFactory.is_compatible("zimage", "Default (Recommended)") is True
-    assert SchedulerFactory.is_compatible("zimage", "DDIM") is False
+    assert SchedulerFactory.is_compatible("zimage", "DDIM") is True
+    assert SchedulerFactory.is_compatible("zimage", "DPM++ 2M Karras") is True
+    # Z-Image rejects FlowMatch Euler
+    assert SchedulerFactory.is_compatible("zimage", "FlowMatch Euler") is False
+
+def test_zimage_step_aware_sampler_filtering():
+    """Verifies step-aware sampler filtering for Lightning-distilled Z-Image Turbo."""
+    # 2-step: Only Default + Euler
+    samplers_2 = SchedulerFactory.get_step_aware_samplers("zimage", 2)
+    assert "Euler" in samplers_2
+    assert "Default (Recommended)" in samplers_2
+    assert "DPM++ 2M Karras" not in samplers_2
+    assert "Euler Ancestral" not in samplers_2
+    assert "DDIM" not in samplers_2
+
+    # 4-step: Default + Euler + DPM++ 2M Karras
+    samplers_4 = SchedulerFactory.get_step_aware_samplers("zimage", 4)
+    assert "Euler" in samplers_4
+    assert "DPM++ 2M Karras" in samplers_4
+    assert "Euler Ancestral" not in samplers_4
+    assert "DDIM" not in samplers_4
+
+    # 8-step: Full menu
+    samplers_8 = SchedulerFactory.get_step_aware_samplers("zimage", 8)
+    assert "Euler" in samplers_8
+    assert "DPM++ 2M Karras" in samplers_8
+    assert "Euler Ancestral" in samplers_8
+    assert "DDIM" in samplers_8
+
+    # Non-zimage architectures are unaffected by step count
+    samplers_sdxl = SchedulerFactory.get_step_aware_samplers("sdxl", 2)
+    assert samplers_sdxl == SchedulerFactory.get_supported_samplers("sdxl")
+
+def test_zimage_step_sampler_fallback():
+    """Verifies incompatible step/sampler combos fall back to Euler Trailing."""
+    # DPM++ at 2-step should be rejected and fall back to Euler
+    is_valid, fallback = SchedulerFactory.validate_step_sampler("zimage", "DPM++ 2M Karras", 2)
+    assert is_valid is False
+    assert fallback == "Euler"
+
+    # Euler at 2-step should pass through
+    is_valid, sampler = SchedulerFactory.validate_step_sampler("zimage", "Euler", 2)
+    assert is_valid is True
+    assert sampler == "Euler"
+
+    # DDIM at 4-step should be rejected
+    is_valid, fallback = SchedulerFactory.validate_step_sampler("zimage", "DDIM", 4)
+    assert is_valid is False
+    assert fallback == "Euler"
+
+    # DDIM at 8-step should pass through
+    is_valid, sampler = SchedulerFactory.validate_step_sampler("zimage", "DDIM", 8)
+    assert is_valid is True
+    assert sampler == "DDIM"
+
+    # Default always passes through
+    is_valid, sampler = SchedulerFactory.validate_step_sampler("zimage", "Default (Recommended)", 2)
+    assert is_valid is True
 
 def test_lora_scanner_compatibility():
     # SDXL LoRA on SDXL backend -> valid

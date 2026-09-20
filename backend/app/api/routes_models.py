@@ -93,3 +93,30 @@ async def delete_model_weights(model_id: str):
         shutil.rmtree(target_dir, ignore_errors=True)
         return {"success": True, "deleted": model_id}
     raise HTTPException(status_code=404, detail="Model weights not found on disk.")
+
+@router.get("/{model_id}/samplers")
+async def get_compatible_samplers(model_id: str, steps: int = 8):
+    """Returns the list of compatible samplers for a model at a given step count.
+
+    For Z-Image Turbo (Lightning-distilled), the sampler list is step-aware:
+    - 2-step: Only Euler (trailing) is safe
+    - 4-step: Euler + DPM++ 2M Karras
+    - 8-step: Full sampler menu
+    """
+    from backend.app.models.scheduler_factory import SchedulerFactory
+
+    adapter = model_registry.get_adapter(model_id)
+    if not adapter:
+        raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found in registry.")
+
+    architecture = adapter.architecture
+    samplers = SchedulerFactory.get_step_aware_samplers(architecture, steps)
+
+    return {
+        "model_id": model_id,
+        "architecture": architecture,
+        "steps": steps,
+        "samplers": samplers,
+        "default": "Euler" if architecture == "zimage" else "Default (Recommended)"
+    }
+

@@ -78,7 +78,13 @@ async def generate_image(req: GenerationConfig):
         expand_left=req.expand_left,
         expand_right=req.expand_right,
         expand_top=req.expand_top,
-        expand_bottom=req.expand_bottom
+        expand_bottom=req.expand_bottom,
+        reference_image_path=req.reference_image_path,
+        reference_mode=req.reference_mode,
+        reference_strength=req.reference_strength,
+        reference_image_path_2=req.reference_image_path_2,
+        reference_mode_2=req.reference_mode_2,
+        reference_strength_2=req.reference_strength_2
     )
     job_id = job_queue.submit_job(job)
     return {"job_id": job_id, "state": job.state.value}

@@ -48,9 +48,16 @@ class BaseImageModelAdapter(ABC):
         seed: int = -1,
         sampler: str = "Default (Recommended)",
         scheduler: str = "Default",
-        callback: Optional[Callable[[int, int, Optional[Image.Image]], None]] = None
+        callback: Optional[Callable[[int, int, Optional[Image.Image]], None]] = None,
+        reference_image: Optional[Image.Image] = None,
+        reference_mode: Optional[str] = None,
+        reference_strength: float = 0.6,
+        reference_image_2: Optional[Image.Image] = None,
+        reference_mode_2: Optional[str] = None,
+        reference_strength_2: float = 0.6,
+        **kwargs: Any
     ) -> Image.Image:
-        """Performs Text-to-Image synthesis with optional step preview callback."""
+        """Performs Text-to-Image synthesis with optional step preview callback and reference conditioning."""
         pass
 
     @abstractmethod

@@ -6,6 +6,7 @@ import {
   GenerationJob, GalleryItem, SystemStatus,
   StylePreset, AspectRatio, VRAMStrategy
 } from './types';
+import { ReferenceImageState } from './components/ReferenceImagePanel';
 import { api } from './services/api';
 
 export const App: React.FC = () => {
@@ -25,6 +26,10 @@ export const App: React.FC = () => {
   const [guidance, setGuidance] = useState<number>(1.5);
   const [seed, setSeed] = useState<number>(-1);
   const [vramStrategy, setVRAMStrategy] = useState<VRAMStrategy>('FULL_GPU');
+
+  // Reference Image State
+  const [reference1, setReference1] = useState<ReferenceImageState | null>(null);
+  const [reference2, setReference2] = useState<ReferenceImageState | null>(null);
 
   // Server Data
   const [styles, setStyles] = useState<StylePreset[]>([]);
@@ -125,7 +130,13 @@ export const App: React.FC = () => {
         sampler: 'Euler',
         scheduler: 'Default',
         vram_strategy: vramStrategy,
-        precision: 'fp16'
+        precision: 'fp16',
+        reference_image_path: reference1?.path,
+        reference_mode: reference1?.mode,
+        reference_strength: reference1?.strength,
+        reference_image_path_2: reference2?.path,
+        reference_mode_2: reference2?.mode,
+        reference_strength_2: reference2?.strength
       });
 
       // Start adaptive polling
@@ -234,6 +245,10 @@ export const App: React.FC = () => {
             vramStrategy={vramStrategy}
             setVRAMStrategy={setVRAMStrategy}
             onReuseJob={handleReuseJob}
+            reference1={reference1}
+            setReference1={setReference1}
+            reference2={reference2}
+            setReference2={setReference2}
           />
         )}
 

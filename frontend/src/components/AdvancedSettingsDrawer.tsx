@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings2, Dices, ChevronDown, ChevronUp } from 'lucide-react';
+import { Settings2, Dices, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import { ModelInfo, VRAMStrategy } from '../types';
 
 interface AdvancedSettingsProps {
@@ -20,6 +20,48 @@ interface AdvancedSettingsProps {
   setVRAMStrategy: (s: VRAMStrategy) => void;
 }
 
+/**
+ * Returns the step-aware sampler list for Z-Image Turbo (Lightning-distilled).
+ * Lightning distillation has specific noise schedule requirements:
+ * - 2-step: Only Euler (trailing) is safe
+ * - 4-step: Euler + DPM++ 2M Karras
+ * - 8-step: Full sampler menu
+ */
+function getStepAwareSamplers(model: string, steps: number): string[] {
+  const m = model.toLowerCase();
+
+  if (m.includes('flux')) {
+    return ['Default (Recommended)', 'FlowMatch Euler'];
+  }
+
+  if (m.includes('zimage')) {
+    if (steps <= 2) {
+      return ['Default (Recommended)', 'Euler'];
+    } else if (steps <= 4) {
+      return ['Default (Recommended)', 'Euler', 'DPM++ 2M Karras'];
+    } else {
+      return ['Default (Recommended)', 'Euler', 'DPM++ 2M Karras', 'Euler Ancestral', 'DDIM'];
+    }
+  }
+
+  if (m.includes('sdxl')) {
+    return ['Default (Recommended)', 'Euler', 'Euler Ancestral', 'DPM++ 2M Karras', 'DDIM'];
+  }
+
+  if (m.includes('qwen')) {
+    return ['Default (Recommended)', 'DPM++ 2M Karras', 'Euler'];
+  }
+
+  return [
+    'Default (Recommended)',
+    'Euler Ancestral',
+    'Euler',
+    'DPM++ 2M Karras',
+    'FlowMatch Euler',
+    'DDIM'
+  ];
+}
+
 export const AdvancedSettingsDrawer: React.FC<AdvancedSettingsProps> = ({
   isOpen,
   setIsOpen,
@@ -37,34 +79,18 @@ export const AdvancedSettingsDrawer: React.FC<AdvancedSettingsProps> = ({
   vramStrategy,
   setVRAMStrategy
 }) => {
-  const getCompatibleSamplers = () => {
-    const m = selectedModel.toLowerCase();
-    if (m.includes('flux')) {
-      return ['Default (Recommended)', 'FlowMatch Euler'];
-    } else if (m.includes('zimage')) {
-      return ['Default (Recommended)', 'Euler'];
-    } else if (m.includes('sdxl')) {
-      return ['Default (Recommended)', 'Euler', 'Euler Ancestral', 'DPM++ 2M Karras', 'DDIM'];
-    } else if (m.includes('qwen')) {
-      return ['Default (Recommended)', 'DPM++ 2M Karras', 'Euler'];
-    }
-    return [
-      'Default (Recommended)',
-      'Euler Ancestral',
-      'Euler',
-      'DPM++ 2M Karras',
-      'FlowMatch Euler',
-      'DDIM'
-    ];
-  };
+  const [samplerToast, setSamplerToast] = React.useState<string | null>(null);
+  const samplers = getStepAwareSamplers(selectedModel, steps);
 
-  const samplers = getCompatibleSamplers();
-
+  // When model or step count changes, validate the current sampler
   React.useEffect(() => {
     if (!samplers.includes(sampler)) {
       setSampler('Default (Recommended)');
+      setSamplerToast(`Sampler adjusted for ${steps}-step mode`);
+      const timer = setTimeout(() => setSamplerToast(null), 3000);
+      return () => clearTimeout(timer);
     }
-  }, [selectedModel]);
+  }, [selectedModel, steps]);
 
   return (
     <div className="glass-panel" style={{ padding: '1rem', marginTop: '1rem' }}>
@@ -125,7 +151,7 @@ export const AdvancedSettingsDrawer: React.FC<AdvancedSettingsProps> = ({
             </div>
             <input
               type="range"
-              min={4}
+              min={2}
               max={50}
               step={1}
               value={steps}
@@ -175,7 +201,7 @@ export const AdvancedSettingsDrawer: React.FC<AdvancedSettingsProps> = ({
             </div>
           </div>
 
-          {/* Sampler Selector */}
+          {/* Sampler Selector — Step-Aware */}
           <div>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
               Sampler / Scheduler:
@@ -190,6 +216,25 @@ export const AdvancedSettingsDrawer: React.FC<AdvancedSettingsProps> = ({
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
+            {/* Step-aware sampler adjustment toast */}
+            {samplerToast && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                marginTop: '0.4rem',
+                padding: '0.3rem 0.6rem',
+                borderRadius: 'var(--radius-sm)',
+                background: 'rgba(245, 158, 11, 0.12)',
+                border: '1px solid rgba(245, 158, 11, 0.25)',
+                fontSize: '0.7rem',
+                color: 'var(--accent-amber)',
+                animation: 'fadeIn 0.25s ease'
+              }}>
+                <AlertTriangle size={12} />
+                <span>{samplerToast}</span>
+              </div>
+            )}
           </div>
 
           {/* VRAM Strategy */}

@@ -29,8 +29,10 @@ Combining the simplicity of modern web studios with industrial-grade reliability
   Simulation generator is strictly placed behind `DEV_SIMULATION_MODE=true`. In production, missing weights or load failures immediately raise actionable errors.
 - **🎲 Centrally Resolved Deterministic Seeds**:
   Seeds (`seed = -1`) are centrally resolved prior to inference via cryptographically secure randomness, ensuring perfect reproducibility via "Reuse Settings".
-- **🎛️ Architecture-Aware Scheduler Factory**:
-  Model-specific schedulers (Euler, Euler Ancestral, DPM++ 2M Karras, FlowMatch Euler, DDIM) with dynamic frontend filtering and backend validation.
+- **🎛️ Architecture- & Step-Aware Scheduler Factory**:
+  Model- and step-tier dynamic filtering (e.g. 2-step locked to Euler, 4-step adding DPM++ 2M Karras, 8-step full suite) with automatic soft fallbacks preventing distorted or blurred outputs.
+- **🖼️ Dual-Mode IP-Adapter Reference Images**:
+  High-fidelity image conditioning with **Style Transfer** and **Subject Injection** modes. Supports up to 2 simultaneous reference images with independent strength sliders (0%–150%), lazy VRAM loading, on-demand weight downloads, and lossless PNG metadata embedding.
 - **🧬 Complete LoRA Support**:
   Active LoRA management with live strength adjustment, cross-architecture compatibility checking, and guaranteed unloading to prevent weight leakage between jobs.
 - **✨ "Magic Polish" Prompt Intelligence & Style Presets**:
@@ -101,7 +103,8 @@ Your default browser will open automatically at **`http://127.0.0.1:7860`**.
 antigravity-diffusion-studio/
 ├── backend/                        # FastAPI Python 3.12 Core
 │   ├── app/
-│   │   ├── api/                    # REST Endpoints (generate, models, gallery, system, styles, loras)
+│   │   ├── api/                    # REST Endpoints (generate, models, gallery, system, styles, loras, reference)
+│   │   │   └── routes_reference.py # Reference image upload & IP-Adapter weight status/download
 │   │   ├── core/                   # GenerationConfig, JobQueue, VRAMManager, Exceptions, Database
 │   │   │   ├── generation_config.py# Authoritative Pydantic configuration model
 │   │   │   ├── exceptions.py       # GenerationCancelled, ModelLoadError, OOMRetryExhausted
@@ -109,10 +112,11 @@ antigravity-diffusion-studio/
 │   │   │   ├── vram_manager.py     # Strategy coordinator and memory profiler
 │   │   │   └── database.py         # SQLite 3 WAL async gallery database
 │   │   ├── models/                 # Model Adapters & Scheduler Factory
-│   │   │   ├── scheduler_factory.py# Architecture-aware scheduler coordinator
+│   │   │   ├── scheduler_factory.py# Architecture- and step-aware scheduler coordinator
+│   │   │   ├── ip_adapter_manager.py# IP-Adapter weights, CLIP image encoder, and lifecycle manager
 │   │   │   ├── registry.py         # Thread-safe single-resident model registry
 │   │   │   ├── base_adapter.py     # Base adapter with DEV_SIMULATION_MODE & LoRA hooks
-│   │   │   ├── zimage/             # Z-Image Turbo adapter (SDXL-Lightning)
+│   │   │   ├── zimage/             # Z-Image Turbo adapter (SDXL-Lightning + IP-Adapter)
 │   │   │   ├── sdxl/               # SDXL Foundation adapter
 │   │   │   ├── flux/               # FLUX.2 Klein / Schnell adapter
 │   │   │   └── qwen/               # Qwen-Image adapter
@@ -124,7 +128,7 @@ antigravity-diffusion-studio/
 │   └── requirements-torch-cu126.txt# Deterministic CUDA 12.6 torch
 ├── frontend/                       # React 19 + TypeScript + Vite UI
 │   ├── src/
-│   │   ├── components/             # PromptBar, ImagePreview, InpaintCanvas, AdvancedSettings, Monitors
+│   │   ├── components/             # PromptBar, ImagePreview, ReferenceImagePanel, InpaintCanvas, AdvancedSettings
 │   │   ├── pages/                  # GeneratePage, ModelsPage, GalleryPage, EditPage, LoRAPage, SystemPage
 │   │   ├── services/               # Typed API Client & Adaptive Polling
 │   │   └── types.ts                # TypeScript definitions mirroring GenerationConfig
@@ -134,8 +138,8 @@ antigravity-diffusion-studio/
 ├── scripts/                        # Utility & Diagnostic Scripts
 │   ├── preflight_check.py          # Detailed CUDA & hardware telemetry check
 │   └── download_models.py          # Terminal model downloader
-├── tests/                          # Comprehensive PyTest Automated Test Suite (25/25 Passing)
-│   ├── test_unit_config.py         # Config, styles, schedulers, LoRA compatibility tests
+├── tests/                          # Comprehensive PyTest Automated Test Suite (28/28 Passing)
+│   ├── test_unit_config.py         # Config, styles, schedulers, LoRA & IP-Adapter compatibility tests
 │   ├── test_unit_cancellation_and_lifecycle.py # Cancellation, seed resolution, OOM, LoRA lifecycle
 │   ├── test_unit_gallery_metadata.py # PNG metadata roundtrip & SQLite tests
 │   ├── test_backend_core.py        # Router, hardware detection, registry tests
@@ -147,6 +151,36 @@ antigravity-diffusion-studio/
 ├── update.bat                      # Dependency updater
 └── diagnostics.bat                 # Non-invasive hardware diagnostic generator
 ```
+
+---
+
+## 🎛️ Step-Aware Samplers & IP-Adapter Reference Images
+
+### Step-Aware Sampler System (`Z-Image Turbo`)
+Lightning distillation requires strict mathematical alignment between step count and noise schedulers. Incompatible samplers cause severe blur, contrast burnout, or structural decay.
+
+Antigravity Diffusion Studio enforces step-aware scheduler mapping dynamically on both the frontend and backend:
+
+| Step Tier | Allowed Samplers | Behavior / Fallback |
+| :--- | :--- | :--- |
+| **2 Steps** | `Euler` | Strict lightning lock; non-Euler selections automatically fallback to `Euler` |
+| **4 Steps** | `Euler`, `DPM++ 2M Karras` | Partial compatibility tier; other samplers fallback to `Euler` |
+| **8 Steps** | `Euler`, `DPM++ 2M Karras`, `Euler Ancestral`, `DDIM`, etc. | Full high-speed suite available |
+
+- **Frontend Toast Notifications**: When switching step counts to a tighter tier while an incompatible sampler is selected, the UI automatically adjusts the sampler to `Euler` and displays a non-intrusive warning toast.
+- **Dynamic API Discovery**: `GET /api/models/{model_id}/samplers?steps={step_count}` returns the exact compatible list for any model architecture and step setting.
+- **Backend Guard**: `SchedulerFactory.create_scheduler(..., steps=N)` validates step compatibility and applies soft fallbacks with structured logging instead of failing jobs.
+
+### Dual-Mode IP-Adapter Reference Images
+Condition image synthesis with visual cues using IP-Adapter:
+
+- **Style Transfer Mode**: Extracts aesthetic, color palette, lighting, and texture cues without duplicating composition or subject geometry.
+- **Subject Injection Mode**: Injects face/subject identity and object characteristics into new contexts and prompts.
+- **Dual-Reference Blending**: Combine two reference images simultaneously (e.g. Reference 1: Style Transfer @ 0.7 + Reference 2: Subject Injection @ 0.85).
+- **Influence Strength**: Granular control from `0.0` to `1.5` with semantic labels (`Subtle`, `Balanced`, `Strong`, `Dominant`).
+- **Memory Footprint**: CLIP ViT-H image encoder (~1.7 GB) and IP-Adapter cross-attention projection weights (~150 MB) are loaded lazily on demand. On a 16 GB RTX 5080, total VRAM with pipeline + adapter remains under ~9.1 GB, leaving ~7 GB headroom.
+- **Automatic Weights Management**: Weights (`ip-adapter_sdxl.safetensors` and `image_encoder`) auto-download smoothly from Hugging Face on first use with progress tracking via `GET /api/ip-adapter/status` and `POST /api/ip-adapter/download`.
+- **PNG Metadata & Lossless Reproducibility**: Reference paths, modes, and strengths are saved directly in embedded PNG chunk metadata and SQLite records, fully restored when using "Reuse Settings".
 
 ---
 
@@ -199,8 +233,9 @@ Run the comprehensive PyTest test suite:
 ```bash
 .venv\Scripts\python.exe -m pytest -v
 ```
-All 25 tests validate:
-- Canonical `GenerationConfig` validation and dimension quantization.
+All 28 tests validate:
+- Canonical `GenerationConfig` validation, dimension quantization (multiples of 8), and IP-Adapter fields.
+- Step-aware sampler filtering and automatic fallback behavior for Z-Image Turbo.
 - Deterministic seed resolution before inference.
 - Guaranteed `CANCELLED` job state persistence.
 - Zero silent fakes when checkpoints are missing (`ModelLoadError`).

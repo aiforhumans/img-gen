@@ -41,6 +41,14 @@ class GenerationConfig(BaseModel):
     expand_top: int = Field(default=0, ge=0, le=2048)
     expand_bottom: int = Field(default=0, ge=0, le=2048)
 
+    # IP-Adapter reference image fields
+    reference_image_path: Optional[str] = Field(default=None, description="Path to reference image for IP-Adapter style/subject guidance")
+    reference_mode: Optional[str] = Field(default=None, description="IP-Adapter mode: 'style' or 'subject'")
+    reference_strength: float = Field(default=0.6, ge=0.0, le=1.5, description="IP-Adapter influence strength (0.0-1.5)")
+    reference_image_path_2: Optional[str] = Field(default=None, description="Path to second reference image (e.g. style + subject combo)")
+    reference_mode_2: Optional[str] = Field(default=None, description="Second IP-Adapter mode: 'style' or 'subject'")
+    reference_strength_2: float = Field(default=0.6, ge=0.0, le=1.5, description="Second reference influence strength")
+
     @field_validator("prompt")
     @classmethod
     def validate_prompt(cls, v: str) -> str:

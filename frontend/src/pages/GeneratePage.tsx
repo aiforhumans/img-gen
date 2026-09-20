@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { PromptBar } from '../components/PromptBar';
 import { AspectPicker } from '../components/AspectPicker';
 import { ImagePreview } from '../components/ImagePreview';
+import { ReferenceImagePanel, ReferenceImageState } from '../components/ReferenceImagePanel';
 import {
   GenerationJob, StylePreset, AspectRatio, VRAMStrategy
 } from '../types';
@@ -35,6 +36,10 @@ interface GeneratePageProps {
   vramStrategy: VRAMStrategy;
   setVRAMStrategy: (s: VRAMStrategy) => void;
   onReuseJob?: (job: GenerationJob) => void;
+  reference1: ReferenceImageState | null;
+  setReference1: (ref: ReferenceImageState | null) => void;
+  reference2: ReferenceImageState | null;
+  setReference2: (ref: ReferenceImageState | null) => void;
 }
 
 export const GeneratePage: React.FC<GeneratePageProps> = ({
@@ -64,7 +69,11 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
   setSeed,
   vramStrategy,
   setVRAMStrategy,
-  onReuseJob
+  onReuseJob,
+  reference1,
+  setReference1,
+  reference2,
+  setReference2
 }) => {
   const [showFineTune, setShowFineTune] = useState(false);
   const [leftWidthPercent, setLeftWidthPercent] = useState<number>(() => {
@@ -168,6 +177,14 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({
             setHeight={setHeight}
           />
         </div>
+
+        {/* Reference Image Panel */}
+        <ReferenceImagePanel
+          reference1={reference1}
+          setReference1={setReference1}
+          reference2={reference2}
+          setReference2={setReference2}
+        />
 
         {/* Minimal Collapsible Fine-Tune Settings Toggle */}
         <div className="glass-panel" style={{ padding: '1rem 1.25rem' }}>

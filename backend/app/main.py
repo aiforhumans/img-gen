@@ -24,6 +24,7 @@ from backend.app.api.routes_gallery import router as gallery_router
 from backend.app.api.routes_system import router as system_router
 from backend.app.api.routes_styles import router as styles_router
 from backend.app.api.routes_lora import router as lora_router
+from backend.app.api.routes_reference import router as reference_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -77,6 +78,7 @@ app.include_router(gallery_router)
 app.include_router(system_router)
 app.include_router(styles_router)
 app.include_router(lora_router)
+app.include_router(reference_router)
 
 # Mount outputs static folder
 outputs_dir = PROJECT_ROOT / "outputs"

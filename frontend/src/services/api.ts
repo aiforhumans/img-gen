@@ -34,6 +34,12 @@ export const api = {
     expand_right?: number;
     expand_top?: number;
     expand_bottom?: number;
+    reference_image_path?: string;
+    reference_mode?: string;
+    reference_strength?: number;
+    reference_image_path_2?: string;
+    reference_mode_2?: string;
+    reference_strength_2?: number;
   }): Promise<{ job_id: string; state: string }> {
     const res = await fetch(`${API_BASE}/api/generate`, {
       method: 'POST',
@@ -173,6 +179,61 @@ export const api = {
   async deleteModel(modelId: string): Promise<any> {
     const res = await fetch(`${API_BASE}/api/models/${modelId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to delete model');
+    return res.json();
+  },
+
+  async getSamplers(modelId: string, steps: number = 8): Promise<{
+    model_id: string;
+    architecture: string;
+    steps: number;
+    samplers: string[];
+    default: string;
+  }> {
+    const res = await fetch(`${API_BASE}/api/models/${modelId}/samplers?steps=${steps}`);
+    if (!res.ok) throw new Error('Failed to fetch samplers');
+    return res.json();
+  },
+
+  // Reference Images & IP-Adapter
+  async uploadReferenceImage(file: File): Promise<{
+    path: string;
+    thumbnail_base64: string;
+    width: number;
+    height: number;
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/api/reference/upload`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Failed to upload reference image');
+    }
+    return res.json();
+  },
+
+  async getIPAdapterStatus(): Promise<{
+    style_weights_available: boolean;
+    subject_weights_available: boolean;
+    clip_encoder_loaded: boolean;
+    active_mode: string | null;
+    downloading: boolean;
+    download_progress: number;
+  }> {
+    const res = await fetch(`${API_BASE}/api/ip-adapter/status`);
+    if (!res.ok) throw new Error('Failed to fetch IP-Adapter status');
+    return res.json();
+  },
+
+  async downloadIPAdapterWeights(mode: string): Promise<{ started: boolean }> {
+    const res = await fetch(`${API_BASE}/api/ip-adapter/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode })
+    });
+    if (!res.ok) throw new Error('Failed to start IP-Adapter download');
     return res.json();
   },
 

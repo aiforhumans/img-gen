@@ -180,7 +180,7 @@ class ZImageAdapter(BaseImageModelAdapter):
         return {
             "steps": 8,
             "guidance": 1.5,
-            "sampler": "Default (Recommended)",
+            "sampler": "Euler",
             "scheduler": "Turbo",
             "optimal_aspect_ratio": "3:4"
         }
@@ -226,7 +226,13 @@ class ZImageAdapter(BaseImageModelAdapter):
         seed: int = -1,
         sampler: str = "Default (Recommended)",
         scheduler: str = "Default",
-        callback: Optional[Callable[[int, int, Optional[Image.Image]], None]] = None
+        callback: Optional[Callable[[int, int, Optional[Image.Image]], None]] = None,
+        reference_image: Optional[Image.Image] = None,
+        reference_mode: Optional[str] = None,
+        reference_strength: float = 0.6,
+        reference_image_2: Optional[Image.Image] = None,
+        reference_mode_2: Optional[str] = None,
+        reference_strength_2: float = 0.6
     ) -> Image.Image:
         actual_seed = random.randint(0, 2**32 - 1) if seed < 0 else seed
 
@@ -238,8 +244,8 @@ class ZImageAdapter(BaseImageModelAdapter):
             guidance = 1.5
 
         if self.pipeline is not None:
-            # Configure scheduler if specified
-            custom_sched = SchedulerFactory.create_scheduler(self.pipeline.scheduler.config, "zimage", sampler)
+            # Configure scheduler with step-aware validation for Lightning distillation
+            custom_sched = SchedulerFactory.create_scheduler(self.pipeline.scheduler.config, "zimage", sampler, steps=steps)
             if custom_sched:
                 self.pipeline.scheduler = custom_sched
 
@@ -254,6 +260,38 @@ class ZImageAdapter(BaseImageModelAdapter):
                     callback(step_idx + 1, steps, None)
                 return callback_kwargs
 
+            # IP-Adapter reference image integration
+            ip_adapter_kwargs = {}
+            has_reference = reference_image is not None and reference_mode is not None
+
+            if has_reference:
+                from backend.app.models.ip_adapter_manager import ip_adapter_manager
+
+                # Determine the primary mode to load
+                primary_mode = reference_mode
+                loaded = ip_adapter_manager.load_adapter(self.pipeline, primary_mode)
+
+                if loaded:
+                    # Prepare reference images for IP-Adapter
+                    processed_ref = ip_adapter_manager.encode_reference_image(reference_image)
+                    ip_adapter_kwargs["ip_adapter_image"] = processed_ref
+
+                    # Set IP-Adapter scale(s)
+                    scale = reference_strength
+
+                    # Dual reference: style + subject simultaneously
+                    if reference_image_2 is not None and reference_mode_2 is not None:
+                        # For dual mode, we'd need to load both adapters which requires
+                        # the pipeline to support multi-adapter. For now, blend via scale.
+                        processed_ref_2 = ip_adapter_manager.encode_reference_image(reference_image_2)
+                        ip_adapter_kwargs["ip_adapter_image"] = [processed_ref, processed_ref_2]
+                        scale = [reference_strength, reference_strength_2]
+
+                    self.pipeline.set_ip_adapter_scale(scale)
+                    app_logger.info(f"[ZImageAdapter] IP-Adapter '{primary_mode}' active (strength={scale})")
+                else:
+                    app_logger.warning("[ZImageAdapter] IP-Adapter could not be loaded, generating without reference.")
+
             output = self.pipeline(
                 prompt=prompt,
                 negative_prompt=negative_prompt if negative_prompt else None,
@@ -262,8 +300,17 @@ class ZImageAdapter(BaseImageModelAdapter):
                 num_inference_steps=steps,
                 guidance_scale=guidance,
                 generator=generator,
-                callback_on_step_end=step_end_callback if callback else None
+                callback_on_step_end=step_end_callback if callback else None,
+                **ip_adapter_kwargs
             )
+
+            # Clean up IP-Adapter scale after generation if it was active
+            if has_reference:
+                try:
+                    self.pipeline.set_ip_adapter_scale(0.0)
+                except Exception:
+                    pass
+
             return output.images[0]
 
         if not is_dev_simulation_mode():

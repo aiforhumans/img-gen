@@ -49,6 +49,12 @@ export interface GenerationJob {
   error_message?: string;
   routing_reason?: string;
   vram_strategy_used: string;
+  reference_image_path?: string;
+  reference_mode?: 'style' | 'subject';
+  reference_strength?: number;
+  reference_image_path_2?: string;
+  reference_mode_2?: 'style' | 'subject';
+  reference_strength_2?: number;
 }
 
 export interface ModelInfo {
@@ -108,6 +114,10 @@ export interface GalleryItem {
   is_favorite: number;
   rating: number;
   tags: string;
+  reference_mode?: 'style' | 'subject';
+  reference_strength?: number;
+  reference_mode_2?: 'style' | 'subject';
+  reference_strength_2?: number;
 }
 
 export interface GPUInfo {
