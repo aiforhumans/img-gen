@@ -71,9 +71,12 @@ When implementing features or refactoring, you must preserve these core rules:
 - If an incompatible scheduler is requested, `SchedulerFactory` must log a warning and provide a **soft fallback to Euler** rather than failing the job.
 
 ### 7. IP-Adapter & Reference Images
-- IP-Adapter weights (`ip-adapter_sdxl.safetensors` and `image_encoder`) must be loaded lazily on demand to preserve baseline VRAM.
-- Support up to 2 reference images with independent modes (`style` or `subject`) and strength clamped to `[0.0, 1.5]`.
-- Always store reference configuration in image metadata so settings can be fully restored.
+- **Lazy Loading**: IP-Adapter weights (`ip-adapter_sdxl.safetensors`, `ip-adapter-plus_sdxl_vit-h.safetensors`, and `image_encoder`) must load lazily on demand to preserve baseline VRAM.
+- **Dual References & Strength Clamping**: Support up to 2 reference images with independent modes (`style` or `subject`) and strength clamped to `[0.0, 1.5]`.
+- **Cross-Attention Block Decoupling**: In `subject` mode, `down` blocks must be set to `0.0` scale so the text prompt maintains 100% authority over scene framing, camera distance (e.g. full-body vs close-up), and background, while `mid` and `up` blocks inject facial features and identity.
+- **Diffusers Scale Matching**: `set_ip_adapter_scale()` must match the exact number of active IP-Adapters in the UNet. When 1 adapter is active, pass a single dict/scalar (blending 2 reference inputs if provided); when 2 adapters are active, pass a list of 2 scale configs.
+- **Clean Toggle-Off Lifecycle**: Whenever `has_reference` is False, the adapter MUST invoke `ip_adapter_manager.unload_adapter(pipeline)` and ensure `unet.config.encoder_hid_dim_type` is reset to `None` so standard text-to-image inference does not expect `image_embeds`.
+- **Lossless Persistence**: Always store reference configuration in embedded PNG chunk metadata and SQLite records so settings can be fully restored via "Reuse Settings".
 
 ---
 

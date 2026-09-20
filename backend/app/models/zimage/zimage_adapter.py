@@ -12,6 +12,33 @@ from backend.app.core.exceptions import ModelLoadError
 from backend.app.core.config import settings
 from backend.app.core.logger import app_logger
 
+def _compute_block_scale(mode: Optional[str], strength: float) -> Dict[str, float]:
+    """Computes block-specific cross-attention scales to prevent composition hijacking.
+
+    In SDXL UNet:
+    - 'down' blocks govern macro-composition, camera distance (close-up vs full body), and framing.
+    - 'mid' block governs high-level semantic features and subject identity.
+    - 'up' blocks govern facial likeness, fine details, hair, and textures.
+
+    For 'subject' mode:
+    Setting down=0.0 lets the text prompt ('standing girl full body shot') strictly control
+    the pose, full-body framing, and camera angle, while mid and up blocks inject
+    the face and subject features from the reference image.
+    """
+    if mode == "subject":
+        return {
+            "down": 0.0,
+            "mid": round(strength * 0.45, 3),
+            "up": round(strength * 0.9, 3),
+        }
+    else:  # style mode
+        return {
+            "down": round(strength * 0.65, 3),
+            "mid": round(strength * 0.7, 3),
+            "up": round(strength * 0.8, 3),
+        }
+
+
 class ZImageAdapter(BaseImageModelAdapter):
     """
     Turbo Photorealism Adapter (Juggernaut-XL Base + ByteDance SDXL-Lightning 2/4/8-Step LoRAs).
@@ -267,30 +294,50 @@ class ZImageAdapter(BaseImageModelAdapter):
             if has_reference:
                 from backend.app.models.ip_adapter_manager import ip_adapter_manager
 
-                # Determine the primary mode to load
-                primary_mode = reference_mode
-                loaded = ip_adapter_manager.load_adapter(self.pipeline, primary_mode)
+                modes_to_load = [reference_mode]
+                if reference_image_2 is not None and reference_mode_2 is not None:
+                    modes_to_load.append(reference_mode_2)
+
+                loaded = ip_adapter_manager.load_adapter(self.pipeline, modes_to_load)
 
                 if loaded:
-                    # Prepare reference images for IP-Adapter
-                    processed_ref = ip_adapter_manager.encode_reference_image(reference_image)
-                    ip_adapter_kwargs["ip_adapter_image"] = processed_ref
+                    processed_ref = ip_adapter_manager.encode_reference_image(reference_image, mode=reference_mode or "subject")
+                    num_adapters = ip_adapter_manager.get_num_ip_adapters(self.pipeline)
 
-                    # Set IP-Adapter scale(s)
-                    scale = reference_strength
+                    if reference_image_2 is not None:
+                        ref2_mode = reference_mode_2 or "style"
+                        processed_ref_2 = ip_adapter_manager.encode_reference_image(reference_image_2, mode=ref2_mode)
 
-                    # Dual reference: style + subject simultaneously
-                    if reference_image_2 is not None and reference_mode_2 is not None:
-                        # For dual mode, we'd need to load both adapters which requires
-                        # the pipeline to support multi-adapter. For now, blend via scale.
-                        processed_ref_2 = ip_adapter_manager.encode_reference_image(reference_image_2)
-                        ip_adapter_kwargs["ip_adapter_image"] = [processed_ref, processed_ref_2]
-                        scale = [reference_strength, reference_strength_2]
+                        if num_adapters >= 2:
+                            # Dual IP-Adapters loaded: assign individual reference images and block-specific scales
+                            ip_adapter_kwargs["ip_adapter_image"] = [processed_ref, processed_ref_2]
+                            scale = [
+                                _compute_block_scale(reference_mode, float(reference_strength)),
+                                _compute_block_scale(ref2_mode, float(reference_strength_2))
+                            ]
+                        else:
+                            # Single IP-Adapter loaded: blend both images based on relative influence
+                            # and supply a single block-scale dictionary to strictly conform to Diffusers contract
+                            total_weight = reference_strength + reference_strength_2
+                            alpha = (reference_strength_2 / total_weight) if total_weight > 0 else 0.5
+                            alpha = max(0.0, min(1.0, alpha))
+                            blended_ref = Image.blend(processed_ref, processed_ref_2, alpha)
+                            ip_adapter_kwargs["ip_adapter_image"] = blended_ref
+                            max_strength = float(max(reference_strength, reference_strength_2))
+                            scale = _compute_block_scale(reference_mode, max_strength)
+                    else:
+                        ip_adapter_kwargs["ip_adapter_image"] = processed_ref
+                        single_scale = _compute_block_scale(reference_mode, float(reference_strength))
+                        scale = single_scale if num_adapters == 1 else [single_scale] * num_adapters
 
                     self.pipeline.set_ip_adapter_scale(scale)
-                    app_logger.info(f"[ZImageAdapter] IP-Adapter '{primary_mode}' active (strength={scale})")
+                    app_logger.info(f"[ZImageAdapter] IP-Adapter active (num_adapters={num_adapters}, scale={scale})")
                 else:
                     app_logger.warning("[ZImageAdapter] IP-Adapter could not be loaded, generating without reference.")
+            else:
+                # Reference image is disabled: ensure any previously attached IP-Adapter is cleanly detached
+                from backend.app.models.ip_adapter_manager import ip_adapter_manager
+                ip_adapter_manager.unload_adapter(self.pipeline)
 
             output = self.pipeline(
                 prompt=prompt,

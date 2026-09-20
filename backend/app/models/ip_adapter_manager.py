@@ -19,7 +19,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Union
 
 from backend.app.core.config import PROJECT_ROOT, settings
 from backend.app.core.logger import app_logger
@@ -169,80 +169,121 @@ class IPAdapterManager:
         thread = threading.Thread(target=self._download_weights, args=(mode,), daemon=True)
         thread.start()
 
-    def load_adapter(self, pipeline: Any, mode: str) -> bool:
-        """Attaches IP-Adapter to an SDXL pipeline.
+    def load_adapter(self, pipeline: Any, mode: Union[str, List[str]]) -> bool:
+        """Attaches IP-Adapter to an SDXL pipeline. Supports single or multi-mode.
 
         Args:
             pipeline: A StableDiffusionXLPipeline instance
-            mode: "style" or "subject"
+            mode: "style", "subject", or a list like ["style", "subject"]
 
-        Returns True if adapter was loaded successfully.
+        Returns True if at least one adapter was loaded successfully.
         """
-        if self._active_mode == mode:
-            app_logger.debug(f"[IPAdapterManager] IP-Adapter '{mode}' already active, skipping reload.")
-            return True
+        if isinstance(mode, str):
+            modes = [mode]
+        else:
+            # Deduplicate preserving order
+            modes = list(dict.fromkeys(mode))
 
-        if not self.ensure_weights(mode):
-            app_logger.error(f"[IPAdapterManager] Cannot load adapter '{mode}': weights not available.")
+        # Filter to modes whose weights are available
+        available_modes = [m for m in modes if self.ensure_weights(m)]
+        if not available_modes:
+            app_logger.error(f"[IPAdapterManager] Cannot load any adapter from {modes}: weights not available.")
             return False
 
+        # If already loaded with the same modes, skip reloading
+        if self._active_mode == available_modes or (len(available_modes) == 1 and self._active_mode == available_modes[0]):
+            app_logger.debug(f"[IPAdapterManager] IP-Adapter '{available_modes}' already active, skipping reload.")
+            return True
+
         try:
-            weight_info = IP_ADAPTER_WEIGHTS[mode]
-            weight_name = weight_info["filename"]
-
-            # Resolve the actual weight path (hf_hub_download puts it in subfolder)
-            weight_path = self.cache_dir / weight_info["subfolder"] / weight_name
-            if not weight_path.exists():
-                weight_path = self.cache_dir / weight_name
-
             image_encoder_path = self.cache_dir / "models" / "image_encoder"
             if not image_encoder_path.exists():
                 image_encoder_path = self.cache_dir / "image_encoder"
 
-            app_logger.info(f"[IPAdapterManager] Loading IP-Adapter '{mode}' into pipeline...")
-
-            # Unload existing adapter if switching modes
+            # Unload existing adapter if loaded
             if self._active_mode is not None:
                 try:
                     pipeline.unload_ip_adapter()
                 except Exception:
                     pass
+                self._active_mode = None
 
-            pipeline.load_ip_adapter(
-                str(self.cache_dir),
-                subfolder=weight_info["subfolder"],
-                weight_name=weight_name,
-                image_encoder_folder=str(image_encoder_path),
-            )
+            if len(available_modes) == 1:
+                single_mode = available_modes[0]
+                weight_info = IP_ADAPTER_WEIGHTS[single_mode]
+                weight_name = weight_info["filename"]
+                subfolder = weight_info["subfolder"]
 
-            self._active_mode = mode
-            app_logger.info(f"[IPAdapterManager] IP-Adapter '{mode}' loaded successfully!")
+                app_logger.info(f"[IPAdapterManager] Loading single IP-Adapter '{single_mode}' into pipeline...")
+                pipeline.load_ip_adapter(
+                    str(self.cache_dir),
+                    subfolder=subfolder,
+                    weight_name=weight_name,
+                    image_encoder_folder=str(image_encoder_path),
+                )
+                self._active_mode = single_mode
+            else:
+                pretrained_paths = [str(self.cache_dir)] * len(available_modes)
+                subfolders = [IP_ADAPTER_WEIGHTS[m]["subfolder"] for m in available_modes]
+                weight_names = [IP_ADAPTER_WEIGHTS[m]["filename"] for m in available_modes]
+
+                app_logger.info(f"[IPAdapterManager] Loading dual IP-Adapters {available_modes} into pipeline...")
+                pipeline.load_ip_adapter(
+                    pretrained_paths,
+                    subfolder=subfolders,
+                    weight_name=weight_names,
+                    image_encoder_folder=str(image_encoder_path),
+                )
+                self._active_mode = available_modes
+
+            app_logger.info(f"[IPAdapterManager] IP-Adapter '{self._active_mode}' loaded successfully!")
             return True
 
         except Exception as e:
-            app_logger.error(f"[IPAdapterManager] Failed to load IP-Adapter '{mode}': {e}", exc_info=True)
+            app_logger.error(f"[IPAdapterManager] Failed to load IP-Adapter '{available_modes}': {e}", exc_info=True)
             return False
+
+    @staticmethod
+    def get_num_ip_adapters(pipeline: Any) -> int:
+        """Returns the number of loaded IP-Adapters in the pipeline."""
+        try:
+            unet = getattr(pipeline, "unet", None)
+            if unet and hasattr(unet, "attn_processors"):
+                for proc in unet.attn_processors.values():
+                    if hasattr(proc, "scale"):
+                        return len(proc.scale)
+            if unet and hasattr(unet, "encoder_hid_proj") and unet.encoder_hid_proj is not None:
+                if hasattr(unet.encoder_hid_proj, "image_projection_layers"):
+                    return len(unet.encoder_hid_proj.image_projection_layers)
+        except Exception:
+            pass
+        return 1
 
     def unload_adapter(self, pipeline: Any) -> bool:
         """Detaches IP-Adapter from pipeline and frees VRAM."""
-        if self._active_mode is None:
-            return True
-
         try:
-            pipeline.unload_ip_adapter()
+            if hasattr(pipeline, "unload_ip_adapter"):
+                pipeline.unload_ip_adapter()
+            if hasattr(pipeline, "unet") and hasattr(pipeline.unet, "config"):
+                pipeline.unet.config.encoder_hid_dim_type = None
+                pipeline.unet.encoder_hid_proj = None
             self._active_mode = None
             app_logger.info("[IPAdapterManager] IP-Adapter unloaded, VRAM reclaimed.")
             return True
         except Exception as e:
             app_logger.warning(f"[IPAdapterManager] Error unloading IP-Adapter: {e}")
+            if hasattr(pipeline, "unet") and hasattr(pipeline.unet, "config"):
+                pipeline.unet.config.encoder_hid_dim_type = None
+                pipeline.unet.encoder_hid_proj = None
             self._active_mode = None
             return False
 
-    def encode_reference_image(self, image) -> Any:
+    def encode_reference_image(self, image, mode: str = "subject") -> Any:
         """Preprocesses and encodes a reference image for IP-Adapter.
 
-        The image is resized and center-cropped to 224x224 for CLIP input.
-        Returns the processed PIL Image ready for ip_adapter_image parameter.
+        The image is resized and cropped to 224x224 for CLIP input.
+        In 'subject' mode on portrait/vertical images, applies top-bias cropping
+        to isolate the face and head, avoiding scene background and chest framing.
         """
         from PIL import Image
 
@@ -251,26 +292,40 @@ class IPAdapterManager:
         else:
             image = image.convert("RGB")
 
-        # CLIP expects 224x224 — resize while maintaining aspect ratio then center crop
         w, h = image.size
-        scale = max(224 / w, 224 / h)
-        new_w, new_h = int(w * scale), int(h * scale)
-        image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
-        # Center crop to 224x224
-        left = (new_w - 224) // 2
-        top = (new_h - 224) // 2
-        image = image.crop((left, top, left + 224, top + 224))
+        # In subject mode on portrait/vertical images, crop focused on the head/face
+        if mode == "subject" and h > w:
+            scale = max(224 / w, 224 / h)
+            new_w, new_h = int(w * scale), int(h * scale)
+            image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            left = (new_w - 224) // 2
+            # Focus on upper region where the face resides
+            top = max(0, min(new_h - 224, int((new_h - 224) * 0.2)))
+            image = image.crop((left, top, left + 224, top + 224))
+        else:
+            scale = max(224 / w, 224 / h)
+            new_w, new_h = int(w * scale), int(h * scale)
+            image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            left = (new_w - 224) // 2
+            top = (new_h - 224) // 2
+            image = image.crop((left, top, left + 224, top + 224))
 
         return image
 
     def get_status(self) -> Dict[str, Any]:
         """Returns current IP-Adapter system status."""
+        active_str = None
+        if isinstance(self._active_mode, list):
+            active_str = ", ".join(self._active_mode)
+        elif self._active_mode:
+            active_str = str(self._active_mode)
+
         return {
             "style_weights_available": self.has_weights("style"),
             "subject_weights_available": self.has_weights("subject"),
             "clip_encoder_loaded": self._clip_encoder is not None,
-            "active_mode": self._active_mode,
+            "active_mode": active_str,
             "downloading": self._is_downloading,
             "download_progress": self._download_progress,
         }

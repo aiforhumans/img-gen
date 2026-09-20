@@ -22,9 +22,9 @@ interface ReferenceImagePanelProps {
 }
 
 function getStrengthLabel(strength: number): string {
-  if (strength <= 0.3) return 'Subtle';
-  if (strength <= 0.7) return 'Balanced';
-  if (strength <= 1.0) return 'Strong';
+  if (strength <= 0.35) return 'Subtle';
+  if (strength <= 0.7) return 'Balanced (Recommended)';
+  if (strength <= 1.0) return 'Strong Likeness';
   return 'Dominant';
 }
 
@@ -318,6 +318,13 @@ export const ReferenceImagePanel: React.FC<ReferenceImagePanelProps> = ({
                 Subject
               </button>
             </div>
+            <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: '0.35rem', lineHeight: 1.35 }}>
+              {ref.mode === 'subject' ? (
+                <span>👤 <strong>Subject:</strong> Injects face & identity. The prompt sets the pose & framing (e.g. <em>"full body shot"</em>).</span>
+              ) : (
+                <span>🎨 <strong>Style:</strong> Transfers colors, lighting, mood, and aesthetic across the scene.</span>
+              )}
+            </div>
           </div>
 
           {/* Strength Slider */}
@@ -343,6 +350,11 @@ export const ReferenceImagePanel: React.FC<ReferenceImagePanelProps> = ({
               onChange={(e) => setRef({ ...ref, strength: parseFloat(e.target.value) })}
               style={{ width: '100%', accentColor: getStrengthColor(ref.strength) }}
             />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: 2 }}>
+              <span>Prompt controls pose</span>
+              <span>50-70% ideal</span>
+              <span>Strong likeness</span>
+            </div>
           </div>
         </div>
       )}

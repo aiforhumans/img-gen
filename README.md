@@ -175,9 +175,12 @@ Antigravity Diffusion Studio enforces step-aware scheduler mapping dynamically o
 Condition image synthesis with visual cues using IP-Adapter:
 
 - **Style Transfer Mode**: Extracts aesthetic, color palette, lighting, and texture cues without duplicating composition or subject geometry.
-- **Subject Injection Mode**: Injects face/subject identity and object characteristics into new contexts and prompts.
-- **Dual-Reference Blending**: Combine two reference images simultaneously (e.g. Reference 1: Style Transfer @ 0.7 + Reference 2: Subject Injection @ 0.85).
-- **Influence Strength**: Granular control from `0.0` to `1.5` with semantic labels (`Subtle`, `Balanced`, `Strong`, `Dominant`).
+- **Subject Injection Mode**: Injects face/subject identity and likeness into new scenes while preserving the text prompt's pose, camera angle, and background.
+- **Cross-Attention Block Decoupling**: In Subject mode, UNet `down` blocks are isolated (`scale=0.0`) so the text prompt maintains 100% control over scene composition and camera distance (e.g. full-body vs close-up shot), while `mid` and `up` blocks inject facial features and identity without composition hijacking.
+- **Mode-Aware Smart Cropping**: For vertical/portrait images in Subject mode, the CLIP encoder applies top-biased cropping to isolate the face and head, avoiding chest and scene background bias.
+- **Dual-Reference Blending**: Combine two reference images simultaneously (e.g. Reference 1: Style Transfer @ 0.7 + Reference 2: Subject Injection @ 0.85). If a single adapter is resident, images are proportionally blended (`Image.blend`).
+- **Clean Toggle-Off Lifecycle**: Toggling Reference Image OFF automatically unloads the IP-Adapter and resets the UNet's `encoder_hid_dim_type` to `None`, ensuring seamless switching between reference conditioning and standard text-to-image synthesis.
+- **Influence Strength**: Granular control from `0.0` to `1.5` with semantic labels (`Subtle`, `Balanced (Recommended)`, `Strong Likeness`, `Dominant`).
 - **Memory Footprint**: CLIP ViT-H image encoder (~1.7 GB) and IP-Adapter cross-attention projection weights (~150 MB) are loaded lazily on demand. On a 16 GB RTX 5080, total VRAM with pipeline + adapter remains under ~9.1 GB, leaving ~7 GB headroom.
 - **Automatic Weights Management**: Weights (`ip-adapter_sdxl.safetensors` and `image_encoder`) auto-download smoothly from Hugging Face on first use with progress tracking via `GET /api/ip-adapter/status` and `POST /api/ip-adapter/download`.
 - **PNG Metadata & Lossless Reproducibility**: Reference paths, modes, and strengths are saved directly in embedded PNG chunk metadata and SQLite records, fully restored when using "Reuse Settings".
